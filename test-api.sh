@@ -1,7 +1,14 @@
 #!/bin/bash
 
+# ============================================================================
+# AI GENERATED - Comprehensive Test Suite for SolixDB API
+# ============================================================================
+# This test suite includes edge case testing for all API endpoints including
+# the SQL query endpoint with comprehensive validation and security tests.
+# ============================================================================
+
 # SolixDB API Test Suite
-# Tests all REST endpoints, GraphQL, and health check
+# Tests all REST endpoints, GraphQL, SQL query endpoint, and health check
 
 # Don't exit on error - we want to run all tests
 set +e
@@ -11,6 +18,7 @@ BASE_URL="${BASE_URL:-http://localhost:3000}"
 API_BASE="${BASE_URL}/api/v1"
 GRAPHQL_URL="${BASE_URL}/graphql"
 HEALTH_URL="${BASE_URL}/health"
+QUERY_URL="${API_BASE}/query"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -54,6 +62,19 @@ make_request() {
     
     echo "$output"
     return 0
+}
+
+# Helper function to check response body contains text
+check_response_contains() {
+    local response=$1
+    local text=$2
+    local body=$(echo "$response" | sed '$d')
+    
+    if echo "$body" | grep -q "$text"; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 # Test Health Check
@@ -197,6 +218,424 @@ test_stats() {
     fi
 }
 
+# Test SQL Query Endpoint - Valid Queries
+test_sql_query_valid() {
+    echo "Testing SQL Query Endpoint - Valid Queries..."
+    
+    # Test valid SELECT query with JSON format (default)
+    query='{"query":"SELECT signature, protocol_name, fee FROM transactions WHERE protocol_name = '\''jupiter_v6'\'' LIMIT 10"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "200" ]; then
+        if echo "$body" | grep -q '"data"'; then
+            print_test "SQL Query - Valid SELECT (JSON format) - Status 200 with data" "PASS"
+        else
+            print_test "SQL Query - Valid SELECT (JSON format) - Status 200 with data" "FAIL"
+        fi
+    else
+        print_test "SQL Query - Valid SELECT (JSON format) - Status 200" "FAIL"
+    fi
+    
+    # Test valid SELECT query with explicit JSON format
+    query='{"query":"SELECT signature, protocol_name FROM transactions LIMIT 5","format":"json"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "200" ]; then
+        print_test "SQL Query - Valid SELECT (explicit JSON) - Status 200" "PASS"
+    else
+        print_test "SQL Query - Valid SELECT (explicit JSON) - Status 200" "FAIL"
+    fi
+    
+    # Test valid SELECT query with CSV format
+    query='{"query":"SELECT protocol_name, count() as total FROM transactions GROUP BY protocol_name ORDER BY total DESC LIMIT 10","format":"csv"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    headers=$(curl -s -I -X POST "$QUERY_URL" \
+        -H "Content-Type: application/json" \
+        -d "$query" | grep -i "Content-Type")
+    
+    if [ "$http_code" = "200" ]; then
+        if echo "$headers" | grep -q "text/csv"; then
+            print_test "SQL Query - Valid SELECT (CSV format) - Status 200 with CSV header" "PASS"
+        else
+            print_test "SQL Query - Valid SELECT (CSV format) - Status 200 with CSV header" "FAIL"
+        fi
+    else
+        print_test "SQL Query - Valid SELECT (CSV format) - Status 200" "FAIL"
+    fi
+    
+    # Test valid WITH/CTE query
+    query='{"query":"WITH top_protocols AS (SELECT protocol_name, count() as cnt FROM transactions GROUP BY protocol_name ORDER BY cnt DESC LIMIT 5) SELECT * FROM top_protocols LIMIT 5"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "200" ]; then
+        print_test "SQL Query - Valid WITH/CTE query - Status 200" "PASS"
+    else
+        print_test "SQL Query - Valid WITH/CTE query - Status 200" "FAIL"
+    fi
+    
+    # Test query with aggregation
+    query='{"query":"SELECT protocol_name, count() as total, avg(fee) as avg_fee FROM transactions WHERE date >= '\''2025-07-20'\'' GROUP BY protocol_name ORDER BY total DESC LIMIT 10"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "200" ]; then
+        print_test "SQL Query - Valid aggregation query - Status 200" "PASS"
+    else
+        print_test "SQL Query - Valid aggregation query - Status 200" "FAIL"
+    fi
+    
+    # Test query with empty results (should still return 200)
+    query='{"query":"SELECT signature FROM transactions WHERE protocol_name = '\''nonexistent_protocol_xyz'\'' LIMIT 10"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "200" ]; then
+        if echo "$body" | grep -q '"count":0' || echo "$body" | grep -q '"data":\[\]'; then
+            print_test "SQL Query - Empty results handling - Status 200" "PASS"
+        else
+            print_test "SQL Query - Empty results handling - Status 200" "FAIL"
+        fi
+    else
+        print_test "SQL Query - Empty results handling - Status 200" "FAIL"
+    fi
+    
+    # Test CSV format with empty results
+    query='{"query":"SELECT signature FROM transactions WHERE protocol_name = '\''nonexistent_protocol_xyz'\'' LIMIT 10","format":"csv"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "200" ]; then
+        print_test "SQL Query - CSV format with empty results - Status 200" "PASS"
+    else
+        print_test "SQL Query - CSV format with empty results - Status 200" "FAIL"
+    fi
+}
+
+# Test SQL Query Endpoint - Validation Errors
+test_sql_query_validation_errors() {
+    echo "Testing SQL Query Endpoint - Validation Errors..."
+    
+    # Test missing LIMIT clause
+    query='{"query":"SELECT signature FROM transactions"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "400" ]; then
+        if check_response_contains "$body" "LIMIT"; then
+            print_test "SQL Query - Missing LIMIT clause - Status 400 with error message" "PASS"
+        else
+            print_test "SQL Query - Missing LIMIT clause - Status 400 with error message" "FAIL"
+        fi
+    else
+        print_test "SQL Query - Missing LIMIT clause - Status 400" "FAIL"
+    fi
+    
+    # Test LIMIT exceeding 10000
+    query='{"query":"SELECT signature FROM transactions LIMIT 20000"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "400" ]; then
+        if check_response_contains "$body" "10000" || check_response_contains "$body" "exceed"; then
+            print_test "SQL Query - LIMIT > 10000 - Status 400 with error message" "PASS"
+        else
+            print_test "SQL Query - LIMIT > 10000 - Status 400 with error message" "FAIL"
+        fi
+    else
+        print_test "SQL Query - LIMIT > 10000 - Status 400" "FAIL"
+    fi
+    
+    # Test LIMIT at maximum allowed (10000)
+    query='{"query":"SELECT signature FROM transactions LIMIT 10000"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "200" ]; then
+        print_test "SQL Query - LIMIT at maximum (10000) - Status 200" "PASS"
+    else
+        print_test "SQL Query - LIMIT at maximum (10000) - Status 200" "FAIL"
+    fi
+    
+    # Test empty query string
+    query='{"query":""}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "400" ]; then
+        print_test "SQL Query - Empty query string - Status 400" "PASS"
+    else
+        print_test "SQL Query - Empty query string - Status 400" "FAIL"
+    fi
+    
+    # Test missing query parameter
+    query='{"format":"json"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "400" ]; then
+        print_test "SQL Query - Missing query parameter - Status 400" "PASS"
+    else
+        print_test "SQL Query - Missing query parameter - Status 400" "FAIL"
+    fi
+    
+    # Test invalid format parameter
+    query='{"query":"SELECT signature FROM transactions LIMIT 10","format":"xml"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "400" ]; then
+        print_test "SQL Query - Invalid format parameter - Status 400" "PASS"
+    else
+        print_test "SQL Query - Invalid format parameter - Status 400" "FAIL"
+    fi
+    
+    # Test query that doesn't start with SELECT or WITH
+    query='{"query":"SHOW TABLES LIMIT 10"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "400" ]; then
+        if check_response_contains "$body" "SELECT" || check_response_contains "$body" "Only SELECT"; then
+            print_test "SQL Query - Query not starting with SELECT/WITH - Status 400" "PASS"
+        else
+            print_test "SQL Query - Query not starting with SELECT/WITH - Status 400" "FAIL"
+        fi
+    else
+        print_test "SQL Query - Query not starting with SELECT/WITH - Status 400" "FAIL"
+    fi
+}
+
+# Test SQL Query Endpoint - Security (Destructive Operations)
+test_sql_query_security() {
+    echo "Testing SQL Query Endpoint - Security (Destructive Operations)..."
+    
+    # Test DROP operation
+    query='{"query":"DROP TABLE transactions LIMIT 10"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "400" ]; then
+        if check_response_contains "$body" "DROP" || check_response_contains "$body" "Destructive"; then
+            print_test "SQL Query - DROP operation blocked - Status 400" "PASS"
+        else
+            print_test "SQL Query - DROP operation blocked - Status 400" "FAIL"
+        fi
+    else
+        print_test "SQL Query - DROP operation blocked - Status 400" "FAIL"
+    fi
+    
+    # Test DELETE operation
+    query='{"query":"DELETE FROM transactions LIMIT 10"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "400" ]; then
+        if check_response_contains "$body" "DELETE" || check_response_contains "$body" "Destructive"; then
+            print_test "SQL Query - DELETE operation blocked - Status 400" "PASS"
+        else
+            print_test "SQL Query - DELETE operation blocked - Status 400" "FAIL"
+        fi
+    else
+        print_test "SQL Query - DELETE operation blocked - Status 400" "FAIL"
+    fi
+    
+    # Test UPDATE operation
+    query='{"query":"UPDATE transactions SET fee = 0 LIMIT 10"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "400" ]; then
+        if check_response_contains "$body" "UPDATE" || check_response_contains "$body" "Destructive"; then
+            print_test "SQL Query - UPDATE operation blocked - Status 400" "PASS"
+        else
+            print_test "SQL Query - UPDATE operation blocked - Status 400" "FAIL"
+        fi
+    else
+        print_test "SQL Query - UPDATE operation blocked - Status 400" "FAIL"
+    fi
+    
+    # Test INSERT operation
+    query='{"query":"INSERT INTO transactions VALUES (1,2,3) LIMIT 10"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "400" ]; then
+        if check_response_contains "$body" "INSERT" || check_response_contains "$body" "Destructive"; then
+            print_test "SQL Query - INSERT operation blocked - Status 400" "PASS"
+        else
+            print_test "SQL Query - INSERT operation blocked - Status 400" "FAIL"
+        fi
+    else
+        print_test "SQL Query - INSERT operation blocked - Status 400" "FAIL"
+    fi
+    
+    # Test ALTER operation
+    query='{"query":"ALTER TABLE transactions ADD COLUMN test INT LIMIT 10"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "400" ]; then
+        if check_response_contains "$body" "ALTER" || check_response_contains "$body" "Destructive"; then
+            print_test "SQL Query - ALTER operation blocked - Status 400" "PASS"
+        else
+            print_test "SQL Query - ALTER operation blocked - Status 400" "FAIL"
+        fi
+    else
+        print_test "SQL Query - ALTER operation blocked - Status 400" "FAIL"
+    fi
+    
+    # Test TRUNCATE operation
+    query='{"query":"TRUNCATE TABLE transactions LIMIT 10"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "400" ]; then
+        if check_response_contains "$body" "TRUNCATE" || check_response_contains "$body" "Destructive"; then
+            print_test "SQL Query - TRUNCATE operation blocked - Status 400" "PASS"
+        else
+            print_test "SQL Query - TRUNCATE operation blocked - Status 400" "FAIL"
+        fi
+    else
+        print_test "SQL Query - TRUNCATE operation blocked - Status 400" "FAIL"
+    fi
+    
+    # Test multiple statements (semicolon injection attempt)
+    query='{"query":"SELECT signature FROM transactions LIMIT 10; DROP TABLE transactions"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "400" ]; then
+        if check_response_contains "$body" "Multiple statements" || check_response_contains "$body" "semicolon"; then
+            print_test "SQL Query - Multiple statements blocked - Status 400" "PASS"
+        else
+            print_test "SQL Query - Multiple statements blocked - Status 400" "FAIL"
+        fi
+    else
+        print_test "SQL Query - Multiple statements blocked - Status 400" "FAIL"
+    fi
+    
+    # Test SQL injection attempt (DROP in WHERE clause)
+    query='{"query":"SELECT signature FROM transactions WHERE protocol_name = '\''test'\'' OR 1=1; DROP TABLE transactions; -- LIMIT 10"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "400" ]; then
+        print_test "SQL Query - SQL injection attempt blocked - Status 400" "PASS"
+    else
+        print_test "SQL Query - SQL injection attempt blocked - Status 400" "FAIL"
+    fi
+    
+    # Test query too long (> 100000 characters)
+    long_query=$(printf 'SELECT signature FROM transactions WHERE protocol_name = '\''test'\'' %*s' 100000 | tr ' ' 'a')
+    long_query="${long_query} LIMIT 10"
+    query="{\"query\":\"$long_query\"}"
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    body=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" = "400" ]; then
+        if check_response_contains "$body" "too long" || check_response_contains "$body" "100000"; then
+            print_test "SQL Query - Query too long blocked - Status 400" "PASS"
+        else
+            print_test "SQL Query - Query too long blocked - Status 400" "FAIL"
+        fi
+    else
+        print_test "SQL Query - Query too long blocked - Status 400" "FAIL"
+    fi
+}
+
+# Test SQL Query Endpoint - Edge Cases
+test_sql_query_edge_cases() {
+    echo "Testing SQL Query Endpoint - Edge Cases..."
+    
+    # Test query with special characters in CSV output
+    query='{"query":"SELECT protocol_name, fee FROM transactions WHERE protocol_name = '\''jupiter_v6'\'' LIMIT 5","format":"csv"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "200" ]; then
+        print_test "SQL Query - CSV with special characters - Status 200" "PASS"
+    else
+        print_test "SQL Query - CSV with special characters - Status 200" "FAIL"
+    fi
+    
+    # Test query with LIMIT 0 (edge case)
+    query='{"query":"SELECT signature FROM transactions LIMIT 0"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "200" ]; then
+        print_test "SQL Query - LIMIT 0 (edge case) - Status 200" "PASS"
+    else
+        print_test "SQL Query - LIMIT 0 (edge case) - Status 200" "FAIL"
+    fi
+    
+    # Test query with OFFSET
+    query='{"query":"SELECT signature FROM transactions LIMIT 10 OFFSET 5"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "200" ]; then
+        print_test "SQL Query - Query with OFFSET - Status 200" "PASS"
+    else
+        print_test "SQL Query - Query with OFFSET - Status 200" "FAIL"
+    fi
+    
+    # Test invalid JSON body
+    response=$(curl -s -X POST "$QUERY_URL" \
+        -H "Content-Type: application/json" \
+        -d '{"query":"SELECT signature FROM transactions LIMIT 10"' \
+        -w "\n%{http_code}" 2>&1)
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "400" ] || [ "$http_code" = "500" ]; then
+        print_test "SQL Query - Invalid JSON body - Status 400/500" "PASS"
+    else
+        print_test "SQL Query - Invalid JSON body - Status 400/500" "FAIL"
+    fi
+    
+    # Test missing Content-Type header
+    response=$(curl -s -X POST "$QUERY_URL" \
+        -d '{"query":"SELECT signature FROM transactions LIMIT 10"}' \
+        -w "\n%{http_code}" 2>&1)
+    http_code=$(echo "$response" | tail -n1)
+    
+    # Should still work or return appropriate error
+    if [ "$http_code" = "200" ] || [ "$http_code" = "400" ] || [ "$http_code" = "415" ]; then
+        print_test "SQL Query - Missing Content-Type header - Handled appropriately" "PASS"
+    else
+        print_test "SQL Query - Missing Content-Type header - Handled appropriately" "FAIL"
+    fi
+    
+    # Test query with comments (should be sanitized but allowed)
+    query='{"query":"SELECT signature FROM transactions -- This is a comment LIMIT 10"}'
+    response=$(make_request "POST" "$QUERY_URL" "$query")
+    http_code=$(echo "$response" | tail -n1)
+    
+    if [ "$http_code" = "200" ]; then
+        print_test "SQL Query - Query with comments - Status 200" "PASS"
+    else
+        print_test "SQL Query - Query with comments - Status 200" "FAIL"
+    fi
+}
+
 # Test GraphQL
 test_graphql() {
     echo "Testing GraphQL API..."
@@ -284,6 +723,18 @@ main() {
     test_stats
     echo ""
     
+    test_sql_query_valid
+    echo ""
+    
+    test_sql_query_validation_errors
+    echo ""
+    
+    test_sql_query_security
+    echo ""
+    
+    test_sql_query_edge_cases
+    echo ""
+    
     test_graphql
     echo ""
     
@@ -309,4 +760,3 @@ main() {
 
 # Run tests
 main
-

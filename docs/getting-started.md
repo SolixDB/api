@@ -11,7 +11,7 @@ This guide will help you get started with the SolixDB API.
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/SolixDB/api
 cd api
 
 # Install dependencies
