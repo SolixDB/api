@@ -174,4 +174,3 @@ MIT
 ## Support
 
 For questions or issues, please contact support or open an issue in the repository.
-
