@@ -1,0 +1,23 @@
+name: Gitbook Sync
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'docs/**'
+      - '.gitbook.yaml'
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      
+      - name: Notify Gitbook
+        run: |
+          echo "Documentation updated. Gitbook will auto-sync if configured."
+          echo "If manual sync is needed, trigger it from Gitbook dashboard."
+

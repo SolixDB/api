@@ -1,0 +1,99 @@
+# Getting Started
+
+This guide will help you get started with the SolixDB API.
+
+## Prerequisites
+
+- An API key (contact support to obtain one)
+- HTTP client (curl, Postman, or your preferred tool)
+- Basic understanding of REST APIs and/or GraphQL
+
+## Installation
+
+### Using Docker (Recommended)
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd api
+
+# Copy environment file
+cp .env.example .env
+
+# Edit .env with your configuration
+nano .env
+
+# Start services
+docker-compose up -d
+```
+
+### Manual Installation
+
+```bash
+# Install dependencies
+npm install
+
+# Build the project
+npm run build
+
+# Start the server
+npm start
+
+# Or run in development mode
+npm run dev
+```
+
+## Environment Variables
+
+Create a `.env` file with the following variables:
+
+```env
+PORT=3000
+NODE_ENV=production
+
+# ClickHouse Configuration
+CLICKHOUSE_URL=http://localhost:8123
+CLICKHOUSE_DATABASE=default
+CLICKHOUSE_USER=default
+CLICKHOUSE_PASSWORD=
+
+# Redis Configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_TTL=3600
+
+# API Configuration
+API_KEY_HEADER=X-API-Key
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=100
+VALID_API_KEYS=your-api-key-1,your-api-key-2
+```
+
+## Making Your First Request
+
+### REST API Example
+
+```bash
+curl -X GET "https://api.solixdb.com/api/v1/transactions?protocol_name=jupiter_v6&limit=10" \
+  -H "X-API-Key: your-api-key"
+```
+
+### GraphQL Example
+
+```bash
+curl -X POST "https://api.solixdb.com/graphql" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "query": "{ transactions(protocolName: \"jupiter_v6\", limit: 10) { signature protocolName fee } }"
+  }'
+```
+
+## Next Steps
+
+- Read about [Authentication](./authentication.md)
+- Explore the [REST API Reference](./rest-api.md)
+- Check out [GraphQL API Reference](./graphql-api.md)
+- See [Examples](./examples.md) for common use cases
+
