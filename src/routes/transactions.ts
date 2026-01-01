@@ -1,13 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { transactionsService } from '../services/transactions';
-import {
-  transactionsQuerySchema,
-  protocolAnalyticsQuerySchema,
-  timeSeriesQuerySchema,
-  feesQuerySchema,
-} from '../validators';
+import { transactionsQuerySchema } from '../validators';
 
-const router = Router();
+const router: Router = Router();
 
 router.get('/', async (req: Request, res: Response) => {
   try {
