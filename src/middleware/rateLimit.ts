@@ -1,18 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
 import { redisService } from '../services/redis';
 import { config } from '../config';
-import { AuthenticatedRequest } from './auth';
 
 export const rateLimit = async (
-  req: AuthenticatedRequest,
+  req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const apiKey = req.apiKey || req.ip;
+  // Rate limit by IP address
+  const identifier = req.ip || req.socket.remoteAddress || 'unknown';
   const windowMs = config.api.rateLimitWindowMs;
   const maxRequests = config.api.rateLimitMaxRequests;
 
-  const key = `rate_limit:${apiKey}`;
+  const key = `rate_limit:${identifier}`;
   const count = await redisService.increment(key, Math.ceil(windowMs / 1000));
 
   res.setHeader('X-RateLimit-Limit', maxRequests.toString());

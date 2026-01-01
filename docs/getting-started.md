@@ -4,34 +4,24 @@ This guide will help you get started with the SolixDB API.
 
 ## Prerequisites
 
-- An API key (contact support to obtain one)
 - HTTP client (curl, Postman, or your preferred tool)
 - Basic understanding of REST APIs and/or GraphQL
 
 ## Installation
-
-### Using Docker (Recommended)
 
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd api
 
+# Install dependencies
+npm install
+
 # Copy environment file
 cp .env.example .env
 
 # Edit .env with your configuration
 nano .env
-
-# Start services
-docker-compose up -d
-```
-
-### Manual Installation
-
-```bash
-# Install dependencies
-npm install
 
 # Build the project
 npm run build
@@ -64,10 +54,8 @@ REDIS_PASSWORD=
 REDIS_TTL=3600
 
 # API Configuration
-API_KEY_HEADER=X-API-Key
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX_REQUESTS=100
-VALID_API_KEYS=your-api-key-1,your-api-key-2
 ```
 
 ## Making Your First Request
@@ -75,8 +63,7 @@ VALID_API_KEYS=your-api-key-1,your-api-key-2
 ### REST API Example
 
 ```bash
-curl -X GET "https://api.solixdb.xyz/api/v1/transactions?protocol_name=jupiter_v6&limit=10" \
-  -H "X-API-Key: your-api-key"
+curl -X GET "https://api.solixdb.xyz/api/v1/transactions?protocol_name=jupiter_v6&limit=10"
 ```
 
 ### GraphQL Example
@@ -84,7 +71,6 @@ curl -X GET "https://api.solixdb.xyz/api/v1/transactions?protocol_name=jupiter_v
 ```bash
 curl -X POST "https://api.solixdb.xyz/graphql" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: your-api-key" \
   -d '{
     "query": "{ transactions(protocolName: \"jupiter_v6\", limit: 10) { signature protocolName fee } }"
   }'
@@ -92,7 +78,6 @@ curl -X POST "https://api.solixdb.xyz/graphql" \
 
 ## Next Steps
 
-- Read about [Authentication](./authentication.md)
 - Explore the [REST API Reference](./rest-api.md)
 - Check out [GraphQL API Reference](./graphql-api.md)
 - See [Examples](./examples.md) for common use cases

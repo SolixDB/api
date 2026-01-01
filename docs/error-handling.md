@@ -20,8 +20,6 @@ All errors follow this structure:
 |------|---------|-------------|
 | 200 | OK | Request succeeded |
 | 400 | Bad Request | Invalid request parameters |
-| 401 | Unauthorized | Missing or invalid API key |
-| 403 | Forbidden | API key not authorized |
 | 404 | Not Found | Resource not found |
 | 429 | Too Many Requests | Rate limit exceeded |
 | 500 | Internal Server Error | Server error |
@@ -52,36 +50,6 @@ Invalid request parameters or validation errors.
 - Invalid parameter values
 - Missing required parameters
 - Parameter out of range
-
-### 401 Unauthorized
-
-Missing API key.
-
-**Example:**
-
-```json
-{
-  "error": "Unauthorized",
-  "message": "API key is required"
-}
-```
-
-**Solution:** Include the `X-API-Key` header in your request.
-
-### 403 Forbidden
-
-Invalid or unauthorized API key.
-
-**Example:**
-
-```json
-{
-  "error": "Forbidden",
-  "message": "Invalid API key"
-}
-```
-
-**Solution:** Verify your API key is correct and active.
 
 ### 404 Not Found
 
@@ -162,12 +130,6 @@ async function handleRequest(url: string, options: RequestInit) {
         case 400:
           console.error('Validation error:', error.details);
           break;
-        case 401:
-          console.error('Authentication required');
-          break;
-        case 403:
-          console.error('Invalid API key');
-          break;
         case 404:
           console.error('Resource not found');
           break;
@@ -211,10 +173,6 @@ def handle_request(url: str, headers: Dict[str, str]) -> Any:
         
         if response.status_code == 400:
             print('Validation error:', error.get('details'))
-        elif response.status_code == 401:
-            print('Authentication required')
-        elif response.status_code == 403:
-            print('Invalid API key')
         elif response.status_code == 404:
             print('Resource not found')
         elif response.status_code == 429:

@@ -4,7 +4,7 @@ The API implements rate limiting to ensure fair usage and maintain service quali
 
 ## Rate Limits
 
-- **Default Limit:** 100 requests per minute per API key
+- **Default Limit:** 100 requests per minute per IP address
 - **Window:** 60 seconds (1 minute)
 
 ## Rate Limit Headers

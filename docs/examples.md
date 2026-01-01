@@ -7,29 +7,25 @@ This page contains practical examples for common use cases.
 ### Get Recent Jupiter V6 Transactions
 
 ```bash
-curl -X GET "https://api.solixdb.xyz/api/v1/transactions?protocol_name=jupiter_v6&limit=10" \
-  -H "X-API-Key: your-api-key"
+curl -X GET "https://api.solixdb.xyz/api/v1/transactions?protocol_name=jupiter_v6&limit=10"
 ```
 
 ### Get Transactions for a Date Range
 
 ```bash
 curl -X GET "https://api.solixdb.xyz/api/v1/transactions?date_from=2025-07-20&date_to=2025-07-21&limit=100" \
-  -H "X-API-Key: your-api-key"
 ```
 
 ### Get Protocol Analytics
 
 ```bash
 curl -X GET "https://api.solixdb.xyz/api/v1/analytics/protocols?protocol_name=jupiter_v6&date_from=2025-07-20" \
-  -H "X-API-Key: your-api-key"
 ```
 
 ### Get Time Series Data
 
 ```bash
 curl -X GET "https://api.solixdb.xyz/api/v1/analytics/time-series?protocol_name=jupiter_v6&date_from=2025-07-20&date_to=2025-07-21&granularity=hour" \
-  -H "X-API-Key: your-api-key"
 ```
 
 ## GraphQL Examples
@@ -129,7 +125,6 @@ async function getTransactions(protocolName: string, limit = 100) {
   
   const response = await fetch(url, {
     headers: {
-      'X-API-Key': API_KEY
     }
   });
   
@@ -153,7 +148,6 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: 'https://api.solixdb.xyz/api/v1',
   headers: {
-    'X-API-Key': 'your-api-key'
   }
 });
 
@@ -180,7 +174,6 @@ async function graphqlQuery(query: string, variables?: Record<string, any>) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-API-Key': 'your-api-key'
     },
     body: JSON.stringify({ query, variables })
   });
@@ -221,7 +214,7 @@ BASE_URL = 'https://api.solixdb.xyz/api/v1'
 
 def get_transactions(protocol_name, limit=100):
     url = f'{BASE_URL}/transactions'
-    headers = {'X-API-Key': API_KEY}
+    headers = {}
     params = {
         'protocol_name': protocol_name,
         'limit': limit
@@ -246,7 +239,6 @@ def graphql_query(query, variables=None):
     url = 'https://api.solixdb.xyz/graphql'
     headers = {
         'Content-Type': 'application/json',
-        'X-API-Key': 'your-api-key'
     }
     
     payload = {'query': query}
