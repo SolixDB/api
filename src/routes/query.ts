@@ -3,7 +3,7 @@ import { clickhouseService } from '../services/clickhouse';
 import { QueryValidator } from '../services/queryValidator';
 import { z } from 'zod';
 
-const router = Router();
+const router: Router = Router();
 
 const querySchema = z.object({
   query: z.string().min(1).max(100000),
@@ -46,7 +46,8 @@ router.post('/', async (req: Request, res: Response) => {
       // Convert to CSV
       if (results.length === 0) {
         res.setHeader('Content-Type', 'text/csv');
-        return res.send('');
+        res.send('');
+        return;
       }
 
       const headers = Object.keys(results[0]);
@@ -66,7 +67,8 @@ router.post('/', async (req: Request, res: Response) => {
 
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="query-results.csv"');
-      return res.send(csvRows.join('\n'));
+      res.send(csvRows.join('\n'));
+      return;
     }
 
     // Default: JSON format
@@ -89,6 +91,7 @@ router.post('/', async (req: Request, res: Response) => {
       error: 'Query execution failed',
       message: error.message || 'An error occurred while executing the query',
     });
+    return;
   }
 });
 
