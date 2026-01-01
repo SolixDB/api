@@ -5,7 +5,7 @@ The REST API provides standardized endpoints for querying Solana transaction dat
 ## Base URL
 
 ```
-https://api.solixdb.com/api/v1
+https://api.solixdb.xyz/api/v1
 ```
 
 ## Endpoints
@@ -31,7 +31,7 @@ Retrieve a list of transactions with optional filters.
 **Example Request:**
 
 ```bash
-curl -X GET "https://api.solixdb.com/api/v1/transactions?protocol_name=jupiter_v6&date_from=2025-07-20&limit=100" \
+curl -X GET "https://api.solixdb.xyz/api/v1/transactions?protocol_name=jupiter_v6&date_from=2025-07-20&limit=100" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -75,7 +75,7 @@ Retrieve a specific transaction by its signature.
 **Example Request:**
 
 ```bash
-curl -X GET "https://api.solixdb.com/api/v1/transactions/5KJp..." \
+curl -X GET "https://api.solixdb.xyz/api/v1/transactions/5KJp..." \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -116,7 +116,7 @@ Get aggregated analytics for a specific protocol.
 **Example Request:**
 
 ```bash
-curl -X GET "https://api.solixdb.com/api/v1/analytics/protocols?protocol_name=jupiter_v6&date_from=2025-07-20" \
+curl -X GET "https://api.solixdb.xyz/api/v1/analytics/protocols?protocol_name=jupiter_v6&date_from=2025-07-20" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -156,7 +156,7 @@ Get time series data for transactions.
 **Example Request:**
 
 ```bash
-curl -X GET "https://api.solixdb.com/api/v1/analytics/time-series?protocol_name=jupiter_v6&date_from=2025-07-20&date_to=2025-07-21&granularity=hour" \
+curl -X GET "https://api.solixdb.xyz/api/v1/analytics/time-series?protocol_name=jupiter_v6&date_from=2025-07-20&date_to=2025-07-21&granularity=hour" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -194,7 +194,7 @@ Get fee statistics and analytics.
 **Example Request:**
 
 ```bash
-curl -X GET "https://api.solixdb.com/api/v1/analytics/fees?protocol_name=jupiter_v6" \
+curl -X GET "https://api.solixdb.xyz/api/v1/analytics/fees?protocol_name=jupiter_v6" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -223,7 +223,7 @@ Get global statistics about the database.
 **Example Request:**
 
 ```bash
-curl -X GET "https://api.solixdb.com/api/v1/stats" \
+curl -X GET "https://api.solixdb.xyz/api/v1/stats" \
   -H "X-API-Key: your-api-key"
 ```
 

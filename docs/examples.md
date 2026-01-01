@@ -7,28 +7,28 @@ This page contains practical examples for common use cases.
 ### Get Recent Jupiter V6 Transactions
 
 ```bash
-curl -X GET "https://api.solixdb.com/api/v1/transactions?protocol_name=jupiter_v6&limit=10" \
+curl -X GET "https://api.solixdb.xyz/api/v1/transactions?protocol_name=jupiter_v6&limit=10" \
   -H "X-API-Key: your-api-key"
 ```
 
 ### Get Transactions for a Date Range
 
 ```bash
-curl -X GET "https://api.solixdb.com/api/v1/transactions?date_from=2025-07-20&date_to=2025-07-21&limit=100" \
+curl -X GET "https://api.solixdb.xyz/api/v1/transactions?date_from=2025-07-20&date_to=2025-07-21&limit=100" \
   -H "X-API-Key: your-api-key"
 ```
 
 ### Get Protocol Analytics
 
 ```bash
-curl -X GET "https://api.solixdb.com/api/v1/analytics/protocols?protocol_name=jupiter_v6&date_from=2025-07-20" \
+curl -X GET "https://api.solixdb.xyz/api/v1/analytics/protocols?protocol_name=jupiter_v6&date_from=2025-07-20" \
   -H "X-API-Key: your-api-key"
 ```
 
 ### Get Time Series Data
 
 ```bash
-curl -X GET "https://api.solixdb.com/api/v1/analytics/time-series?protocol_name=jupiter_v6&date_from=2025-07-20&date_to=2025-07-21&granularity=hour" \
+curl -X GET "https://api.solixdb.xyz/api/v1/analytics/time-series?protocol_name=jupiter_v6&date_from=2025-07-20&date_to=2025-07-21&granularity=hour" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -122,7 +122,7 @@ query GetAnalytics {
 
 ```typescript
 const API_KEY = 'your-api-key';
-const BASE_URL = 'https://api.solixdb.com/api/v1';
+const BASE_URL = 'https://api.solixdb.xyz/api/v1';
 
 async function getTransactions(protocolName: string, limit = 100) {
   const url = `${BASE_URL}/transactions?protocol_name=${protocolName}&limit=${limit}`;
@@ -151,7 +151,7 @@ console.log(data);
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'https://api.solixdb.com/api/v1',
+  baseURL: 'https://api.solixdb.xyz/api/v1',
   headers: {
     'X-API-Key': 'your-api-key'
   }
@@ -176,7 +176,7 @@ console.log(analytics);
 
 ```typescript
 async function graphqlQuery(query: string, variables?: Record<string, any>) {
-  const response = await fetch('https://api.solixdb.com/graphql', {
+  const response = await fetch('https://api.solixdb.xyz/graphql', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -217,7 +217,7 @@ console.log(data);
 import requests
 
 API_KEY = 'your-api-key'
-BASE_URL = 'https://api.solixdb.com/api/v1'
+BASE_URL = 'https://api.solixdb.xyz/api/v1'
 
 def get_transactions(protocol_name, limit=100):
     url = f'{BASE_URL}/transactions'
@@ -243,7 +243,7 @@ print(data)
 import requests
 
 def graphql_query(query, variables=None):
-    url = 'https://api.solixdb.com/graphql'
+    url = 'https://api.solixdb.xyz/graphql'
     headers = {
         'Content-Type': 'application/json',
         'X-API-Key': 'your-api-key'

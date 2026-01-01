@@ -22,14 +22,14 @@ Contact support to obtain an API key. API keys are unique identifiers that:
 ### REST API
 
 ```bash
-curl -X GET "https://api.solixdb.com/api/v1/transactions" \
+curl -X GET "https://api.solixdb.xyz/api/v1/transactions" \
   -H "X-API-Key: your-api-key"
 ```
 
 ### GraphQL
 
 ```bash
-curl -X POST "https://api.solixdb.com/graphql" \
+curl -X POST "https://api.solixdb.xyz/graphql" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{"query": "{ stats { totalTransactions } }"}'
@@ -38,7 +38,7 @@ curl -X POST "https://api.solixdb.com/graphql" \
 ### JavaScript/TypeScript
 
 ```typescript
-const response = await fetch('https://api.solixdb.com/api/v1/transactions', {
+const response = await fetch('https://api.solixdb.xyz/api/v1/transactions', {
   headers: {
     'X-API-Key': 'your-api-key'
   }
@@ -55,7 +55,7 @@ headers = {
 }
 
 response = requests.get(
-    'https://api.solixdb.com/api/v1/transactions',
+    'https://api.solixdb.xyz/api/v1/transactions',
     headers=headers
 )
 ```

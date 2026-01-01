@@ -273,7 +273,7 @@ query {
 ### Using curl
 
 ```bash
-curl -X POST "https://api.solixdb.com/graphql" \
+curl -X POST "https://api.solixdb.xyz/graphql" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{
@@ -294,7 +294,7 @@ const query = `
   }
 `;
 
-const response = await fetch('https://api.solixdb.com/graphql', {
+const response = await fetch('https://api.solixdb.xyz/graphql', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -323,7 +323,7 @@ query = """
 """
 
 response = requests.post(
-    'https://api.solixdb.com/graphql',
+    'https://api.solixdb.xyz/graphql',
     json={'query': query},
     headers={'X-API-Key': 'your-api-key'}
 )

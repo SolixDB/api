@@ -75,14 +75,14 @@ VALID_API_KEYS=your-api-key-1,your-api-key-2
 ### REST API Example
 
 ```bash
-curl -X GET "https://api.solixdb.com/api/v1/transactions?protocol_name=jupiter_v6&limit=10" \
+curl -X GET "https://api.solixdb.xyz/api/v1/transactions?protocol_name=jupiter_v6&limit=10" \
   -H "X-API-Key: your-api-key"
 ```
 
 ### GraphQL Example
 
 ```bash
-curl -X POST "https://api.solixdb.com/graphql" \
+curl -X POST "https://api.solixdb.xyz/graphql" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{

@@ -22,6 +22,6 @@ pluginsConfig:
       - twitter
 
 variables:
-  api_base_url: "https://api.solixdb.com"
+  api_base_url: "https://api.solixdb.xyz"
   docs_url: "https://docs.solixdb.xyz"
 

@@ -24,7 +24,7 @@ Welcome to the SolixDB API documentation. This API provides access to 390M+ Sola
 ## Base URL
 
 ```
-https://api.solixdb.com
+https://api.solixdb.xyz
 ```
 
 ## Support

@@ -121,7 +121,7 @@ Example Nginx configuration:
 ```nginx
 server {
     listen 80;
-    server_name api.solixdb.com;
+    server_name api.solixdb.xyz;
 
     location / {
         proxy_pass http://localhost:3000;
@@ -142,7 +142,7 @@ server {
 Use Let's Encrypt with Certbot:
 
 ```bash
-sudo certbot --nginx -d api.solixdb.com
+sudo certbot --nginx -d api.solixdb.xyz
 ```
 
 ## Monitoring
