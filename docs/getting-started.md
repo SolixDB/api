@@ -76,6 +76,20 @@ curl -X POST "https://api.solixdb.xyz/graphql" \
   }'
 ```
 
+### SQL Query Example
+
+Execute custom SQL queries directly against the database:
+
+```bash
+curl -X POST "https://api.solixdb.xyz/api/v1/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "SELECT signature, protocol_name, fee FROM transactions WHERE protocol_name = '\''jupiter_v6'\'' LIMIT 10"
+  }'
+```
+
+**Note:** SQL queries must include a LIMIT clause and are read-only (SELECT only).
+
 ## Next Steps
 
 - Explore the [REST API Reference](./rest-api.md)

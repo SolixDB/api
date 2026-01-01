@@ -28,6 +28,59 @@ curl -X GET "https://api.solixdb.xyz/api/v1/analytics/protocols?protocol_name=ju
 curl -X GET "https://api.solixdb.xyz/api/v1/analytics/time-series?protocol_name=jupiter_v6&date_from=2025-07-20&date_to=2025-07-21&granularity=hour" \
 ```
 
+## SQL Query Examples
+
+### Basic SELECT Query
+
+```bash
+curl -X POST "https://api.solixdb.xyz/api/v1/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "SELECT signature, protocol_name, fee FROM transactions WHERE protocol_name = '\''jupiter_v6'\'' LIMIT 10"
+  }'
+```
+
+### Aggregation Query
+
+```bash
+curl -X POST "https://api.solixdb.xyz/api/v1/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "SELECT protocol_name, count() as total, avg(fee) as avg_fee FROM transactions WHERE date >= '\''2025-07-20'\'' GROUP BY protocol_name ORDER BY total DESC LIMIT 10"
+  }'
+```
+
+### Time Series Query
+
+```bash
+curl -X POST "https://api.solixdb.xyz/api/v1/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "SELECT toStartOfHour(toDateTime(block_time)) as hour, count() as transactions FROM transactions WHERE date >= '\''2025-07-20'\'' AND date <= '\''2025-07-21'\'' GROUP BY hour ORDER BY hour LIMIT 100"
+  }'
+```
+
+### Export as CSV
+
+```bash
+curl -X POST "https://api.solixdb.xyz/api/v1/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "SELECT signature, protocol_name, fee, compute_units FROM transactions WHERE protocol_name = '\''jupiter_v6'\'' LIMIT 1000",
+    "format": "csv"
+  }' > transactions.csv
+```
+
+### Complex Query with JOIN
+
+```bash
+curl -X POST "https://api.solixdb.xyz/api/v1/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "SELECT t.protocol_name, count() as total, sum(t.fee) as total_fees FROM transactions t WHERE t.date >= '\''2025-07-20'\'' GROUP BY t.protocol_name HAVING total > 1000 ORDER BY total DESC LIMIT 20"
+  }'
+```
+
 ## GraphQL Examples
 
 ### Query Transactions

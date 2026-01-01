@@ -61,6 +61,7 @@ See `.env.example` for all configuration options:
 - `GET /api/v1/analytics/time-series` - Get time series data
 - `GET /api/v1/analytics/fees` - Get fee analytics
 - `GET /api/v1/stats` - Get global statistics
+- `POST /api/v1/query` - Execute read-only SQL queries (SELECT only)
 
 ### GraphQL
 
