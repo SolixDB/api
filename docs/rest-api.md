@@ -246,6 +246,91 @@ curl -X GET "https://api.solixdb.xyz/api/v1/stats" \
 }
 ```
 
+### Execute SQL Query
+
+Execute read-only SQL queries directly against the ClickHouse database. This endpoint allows you to write custom SELECT queries for maximum flexibility.
+
+**Endpoint:** `POST /query`
+
+**Request Body:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | Yes | SQL SELECT query (must include LIMIT) |
+| `format` | string | No | Response format: `json` or `csv` (default: `json`) |
+
+**Safety Restrictions:**
+
+- Only SELECT queries are allowed (no DROP, DELETE, UPDATE, INSERT, etc.)
+- Query must include a LIMIT clause
+- Maximum LIMIT value: 10,000 rows
+- Maximum query length: 100,000 characters
+- Query timeout: 30 seconds
+- Only single statements allowed (no semicolons)
+
+**Example Request (JSON):**
+
+```bash
+curl -X POST "https://api.solixdb.xyz/api/v1/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "SELECT signature, protocol_name, fee, compute_units FROM transactions WHERE protocol_name = '\''jupiter_v6'\'' AND date >= '\''2025-07-20'\'' LIMIT 100"
+  }'
+```
+
+**Example Request (CSV):**
+
+```bash
+curl -X POST "https://api.solixdb.xyz/api/v1/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "SELECT protocol_name, count() as total FROM transactions GROUP BY protocol_name ORDER BY total DESC LIMIT 10",
+    "format": "csv"
+  }'
+```
+
+**Example Response (JSON):**
+
+```json
+{
+  "data": [
+    {
+      "signature": "5KJp...",
+      "protocol_name": "jupiter_v6",
+      "fee": 5000,
+      "compute_units": 200000
+    }
+  ],
+  "count": 100,
+  "query": "SELECT signature, protocol_name, fee, compute_units FROM transactions WHERE protocol_name = 'jupiter_v6' AND date >= '2025-07-20' LIMIT 100"
+}
+```
+
+**Example Response (CSV):**
+
+```
+protocol_name,total
+jupiter_v6,150000000
+jupiter_v4,100000000
+raydium_amm_v3,50000000
+```
+
+**Error Responses:**
+
+```json
+{
+  "error": "Invalid query",
+  "message": "Query must include a LIMIT clause. Maximum allowed: LIMIT 10000"
+}
+```
+
+```json
+{
+  "error": "Invalid query",
+  "message": "Destructive operation 'DROP' is not allowed. Only read-only queries are permitted."
+}
+```
+
 ## Response Format
 
 All successful responses follow this format:

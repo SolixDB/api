@@ -14,6 +14,7 @@ Welcome to the SolixDB API documentation. This API provides access to 390M+ Sola
 ## Features
 
 - **REST API** - Fast, standardized endpoints for common queries
+- **SQL Query API** - Execute read-only SQL queries directly against the database
 - **GraphQL API** - Flexible querying with exactly the data you need
 - **High Performance** - Optimized queries with < 500ms response times
 - **Caching** - Redis caching for improved performance

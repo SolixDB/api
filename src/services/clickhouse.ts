@@ -13,12 +13,15 @@ export class ClickHouseService {
     });
   }
 
-  async query<T = any>(query: string, params?: Record<string, any>): Promise<T[]> {
+  async query<T = any>(query: string, params?: Record<string, any>, timeout?: number): Promise<T[]> {
     try {
       const result = await this.client.query({
         query,
         query_params: params || {},
         format: 'JSONEachRow',
+        clickhouse_settings: {
+          max_execution_time: timeout || 30, // Default 30 seconds timeout
+        },
       });
 
       const data = await result.json<T[]>();
