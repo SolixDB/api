@@ -6,7 +6,7 @@ import {
   feesQuerySchema,
 } from '../validators';
 
-const router = Router();
+const router: Router = Router();
 
 router.get('/protocols', async (req: Request, res: Response) => {
   try {

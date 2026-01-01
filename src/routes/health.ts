@@ -2,9 +2,9 @@ import { Router, Request, Response } from 'express';
 import { clickhouseService } from '../services/clickhouse';
 import { redisService } from '../services/redis';
 
-const router = Router();
+const router: Router = Router();
 
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (_req: Request, res: Response) => {
   const [clickhouseHealthy, redisHealthy] = await Promise.all([
     clickhouseService.healthCheck(),
     redisService.healthCheck(),

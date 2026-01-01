@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { transactionsService } from '../services/transactions';
 
-const router = Router();
+const router: Router = Router();
 
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (_req: Request, res: Response) => {
   try {
     const stats = await transactionsService.getStats();
     res.json({ data: stats });

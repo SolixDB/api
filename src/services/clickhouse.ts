@@ -6,7 +6,7 @@ export class ClickHouseService {
 
   constructor() {
     this.client = createClient({
-      url: config.clickhouse.url,
+      host: config.clickhouse.url,
       database: config.clickhouse.database,
       username: config.clickhouse.user,
       password: config.clickhouse.password,
