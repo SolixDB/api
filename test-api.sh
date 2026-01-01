@@ -3,7 +3,8 @@
 # SolixDB API Test Suite
 # Tests all REST endpoints, GraphQL, and health check
 
-set -e
+# Don't exit on error - we want to run all tests
+set +e
 
 # Configuration
 BASE_URL="${BASE_URL:-http://localhost:3000}"
@@ -39,16 +40,20 @@ make_request() {
     local method=$1
     local url=$2
     local data=$3
+    local output
     
     if [ -n "$data" ]; then
-        curl -s -X "$method" "$url" \
+        output=$(curl -s -X "$method" "$url" \
             -H "Content-Type: application/json" \
             -d "$data" \
-            -w "\n%{http_code}"
+            -w "\n%{http_code}" 2>&1)
     else
-        curl -s -X "$method" "$url" \
-            -w "\n%{http_code}"
+        output=$(curl -s -X "$method" "$url" \
+            -w "\n%{http_code}" 2>&1)
     fi
+    
+    echo "$output"
+    return 0
 }
 
 # Test Health Check
