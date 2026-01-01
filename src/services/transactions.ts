@@ -144,8 +144,22 @@ export class TransactionsService {
     `;
 
     const result = await clickhouseService.queryOne<ProtocolAnalytics>(query, queryParams);
+    
+    // If no data found, return default values
     if (!result) {
-      throw new Error('Analytics not found');
+      const analytics: ProtocolAnalytics = {
+        protocolName,
+        totalTransactions: 0,
+        totalFees: 0,
+        totalComputeUnits: 0,
+        averageFee: 0,
+        averageComputeUnits: 0,
+        uniquePrograms: 0,
+        dateFrom,
+        dateTo,
+      };
+      await redisService.set(cacheKey, analytics, config.redis.ttl);
+      return analytics;
     }
 
     const analytics: ProtocolAnalytics = {
