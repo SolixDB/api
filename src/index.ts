@@ -5,7 +5,6 @@ import compression from 'compression';
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
 import { config } from './config';
-import { authenticateApiKey } from './middleware/auth';
 import { rateLimit } from './middleware/rateLimit';
 import transactionsRouter from './routes/transactions';
 import analyticsRouter from './routes/analytics';
@@ -25,10 +24,10 @@ app.use(express.json());
 // Health check (no auth required)
 app.use('/health', healthRouter);
 
-// API routes (require authentication and rate limiting)
-app.use('/api/v1/transactions', authenticateApiKey, rateLimit, transactionsRouter);
-app.use('/api/v1/analytics', authenticateApiKey, rateLimit, analyticsRouter);
-app.use('/api/v1/stats', authenticateApiKey, rateLimit, statsRouter);
+// API routes (public, rate limited by IP)
+app.use('/api/v1/transactions', rateLimit, transactionsRouter);
+app.use('/api/v1/analytics', rateLimit, analyticsRouter);
+app.use('/api/v1/stats', rateLimit, statsRouter);
 
 // GraphQL endpoint
 const apolloServer = new ApolloServer({
@@ -48,24 +47,22 @@ const apolloServer = new ApolloServer({
 async function startServer() {
   await apolloServer.start();
   
-  // GraphQL endpoint with auth and rate limiting
+  // GraphQL endpoint (public, rate limited by IP)
   app.use(
     '/graphql',
-    authenticateApiKey,
     rateLimit,
     expressMiddleware(apolloServer, {
-      context: async ({ req }) => {
-        const apiKey = req.headers[config.api.keyHeader.toLowerCase()] as string;
-        return { apiKey };
+      context: async () => {
+        return {};
       },
     })
   );
 
   app.listen(config.server.port, () => {
-    console.log(`🚀 Server running on port ${config.server.port}`);
-    console.log(`📊 REST API: http://localhost:${config.server.port}/api/v1`);
-    console.log(`🔮 GraphQL: http://localhost:${config.server.port}/graphql`);
-    console.log(`❤️  Health: http://localhost:${config.server.port}/health`);
+    console.log(`Server running on port ${config.server.port}`);
+    console.log(`REST API: http://localhost:${config.server.port}/api/v1`);
+    console.log(`GraphQL: http://localhost:${config.server.port}/graphql`);
+    console.log(`Health: http://localhost:${config.server.port}/health`);
   });
 }
 

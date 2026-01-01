@@ -8,13 +8,9 @@ The GraphQL API provides flexible querying with exactly the data you need.
 POST /graphql
 ```
 
-## Authentication
+## Public API
 
-Include your API key in the request header:
-
-```
-X-API-Key: your-api-key
-```
+The API is public and does not require authentication. Rate limiting is applied per IP address.
 
 ## Schema
 
@@ -275,7 +271,7 @@ query {
 ```bash
 curl -X POST "https://api.solixdb.xyz/graphql" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: your-api-key" \
+ \
   -d '{
     "query": "{ transactions(protocolName: \"jupiter_v6\", limit: 5) { signature protocolName fee } }"
   }'
@@ -298,7 +294,6 @@ const response = await fetch('https://api.solixdb.xyz/graphql', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'X-API-Key': 'your-api-key'
   },
   body: JSON.stringify({ query })
 });
@@ -325,7 +320,7 @@ query = """
 response = requests.post(
     'https://api.solixdb.xyz/graphql',
     json={'query': query},
-    headers={'X-API-Key': 'your-api-key'}
+    headers={}
 )
 
 data = response.json()

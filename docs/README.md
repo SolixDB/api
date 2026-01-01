@@ -5,12 +5,11 @@ Welcome to the SolixDB API documentation. This API provides access to 390M+ Sola
 ## Quick Start
 
 1. [Getting Started](./getting-started.md)
-2. [Authentication](./authentication.md)
-3. [REST API Reference](./rest-api.md)
-4. [GraphQL API Reference](./graphql-api.md)
-5. [Rate Limiting](./rate-limiting.md)
-6. [Examples](./examples.md)
-7. [Error Handling](./error-handling.md)
+2. [REST API Reference](./rest-api.md)
+3. [GraphQL API Reference](./graphql-api.md)
+4. [Rate Limiting](./rate-limiting.md)
+5. [Examples](./examples.md)
+6. [Error Handling](./error-handling.md)
 
 ## Features
 
@@ -18,8 +17,7 @@ Welcome to the SolixDB API documentation. This API provides access to 390M+ Sola
 - **GraphQL API** - Flexible querying with exactly the data you need
 - **High Performance** - Optimized queries with < 500ms response times
 - **Caching** - Redis caching for improved performance
-- **Rate Limiting** - Per API key rate limiting
-- **Authentication** - Secure API key based authentication
+- **Rate Limiting** - IP-based rate limiting to prevent abuse
 
 ## Base URL
 

@@ -9,7 +9,7 @@
     "dev": "tsx watch src/index.ts",
     "lint": "eslint src --ext .ts",
     "test": "jest"
-  },
+  },  
   "keywords": ["solana", "api", "graphql", "clickhouse"],
   "author": "",
   "license": "MIT",

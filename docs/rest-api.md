@@ -32,7 +32,6 @@ Retrieve a list of transactions with optional filters.
 
 ```bash
 curl -X GET "https://api.solixdb.xyz/api/v1/transactions?protocol_name=jupiter_v6&date_from=2025-07-20&limit=100" \
-  -H "X-API-Key: your-api-key"
 ```
 
 **Example Response:**
@@ -76,7 +75,6 @@ Retrieve a specific transaction by its signature.
 
 ```bash
 curl -X GET "https://api.solixdb.xyz/api/v1/transactions/5KJp..." \
-  -H "X-API-Key: your-api-key"
 ```
 
 **Example Response:**
@@ -117,7 +115,6 @@ Get aggregated analytics for a specific protocol.
 
 ```bash
 curl -X GET "https://api.solixdb.xyz/api/v1/analytics/protocols?protocol_name=jupiter_v6&date_from=2025-07-20" \
-  -H "X-API-Key: your-api-key"
 ```
 
 **Example Response:**
@@ -157,7 +154,6 @@ Get time series data for transactions.
 
 ```bash
 curl -X GET "https://api.solixdb.xyz/api/v1/analytics/time-series?protocol_name=jupiter_v6&date_from=2025-07-20&date_to=2025-07-21&granularity=hour" \
-  -H "X-API-Key: your-api-key"
 ```
 
 **Example Response:**
@@ -195,7 +191,6 @@ Get fee statistics and analytics.
 
 ```bash
 curl -X GET "https://api.solixdb.xyz/api/v1/analytics/fees?protocol_name=jupiter_v6" \
-  -H "X-API-Key: your-api-key"
 ```
 
 **Example Response:**
@@ -224,7 +219,6 @@ Get global statistics about the database.
 
 ```bash
 curl -X GET "https://api.solixdb.xyz/api/v1/stats" \
-  -H "X-API-Key: your-api-key"
 ```
 
 **Example Response:**

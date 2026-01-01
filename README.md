@@ -4,22 +4,19 @@ Production-ready TypeScript API/GraphQL service for querying 390M+ Solana transa
 
 ## Features
 
-- 🚀 **REST API** - Fast, standardized endpoints for common queries
-- 🔮 **GraphQL API** - Flexible querying with exactly the data you need
-- ⚡ **High Performance** - Optimized queries with < 500ms response times
-- 💾 **Redis Caching** - Intelligent caching for improved performance
-- 🔒 **API Key Authentication** - Secure API key based authentication
-- 🛡️ **Rate Limiting** - Per API key rate limiting
-- 📊 **Analytics** - Protocol analytics, time series, and fee statistics
-- 🐳 **Docker Ready** - Containerized for easy deployment
-- ❤️ **Health Checks** - Built-in health monitoring
+- **REST API** - Fast, standardized endpoints for common queries
+- **GraphQL API** - Flexible querying with exactly the data you need
+- **High Performance** - Optimized queries with < 500ms response times
+- **Redis Caching** - Intelligent caching for improved performance
+- **Rate Limiting** - IP-based rate limiting to prevent abuse
+- **Analytics** - Protocol analytics, time series, and fee statistics
+- **Health Checks** - Built-in health monitoring
 
 ## Quick Start
 
 ### Prerequisites
 
 - Node.js 20+
-- Docker and Docker Compose (optional)
 - ClickHouse database access
 - Redis instance
 
@@ -27,7 +24,7 @@ Production-ready TypeScript API/GraphQL service for querying 390M+ Solana transa
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/SolixDB/api
 cd api
 
 # Install dependencies
@@ -46,26 +43,13 @@ npm run build
 npm start
 ```
 
-### Docker
-
-```bash
-# Start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f api
-
-# Stop services
-docker-compose down
-```
-
 ## Configuration
 
 See `.env.example` for all configuration options:
 
 - **ClickHouse**: Database connection settings
 - **Redis**: Cache connection settings
-- **API**: Authentication and rate limiting configuration
+- **API**: Rate limiting configuration
 
 ## API Endpoints
 
@@ -91,7 +75,6 @@ See `.env.example` for all configuration options:
 Comprehensive documentation is available in the `docs/` directory:
 
 - [Getting Started](./docs/getting-started.md)
-- [Authentication](./docs/authentication.md)
 - [REST API Reference](./docs/rest-api.md)
 - [GraphQL API Reference](./docs/graphql-api.md)
 - [Rate Limiting](./docs/rate-limiting.md)
@@ -99,8 +82,6 @@ Comprehensive documentation is available in the `docs/` directory:
 - [Examples](./docs/examples.md)
 
 **Live Documentation:** [docs.solixdb.xyz](https://docs.solixdb.xyz) (when deployed)
-
-**Hosting Setup:** See [Gitbook Setup Guide](./docs/GITBOOK_SETUP.md) for instructions on hosting the documentation.
 
 ## Development
 
@@ -114,6 +95,24 @@ npm run build
 # Lint code
 npm run lint
 ```
+
+## Testing
+
+Run the comprehensive test suite to verify all endpoints:
+
+```bash
+# Test against local server (default: http://localhost:3000)
+./test-api.sh
+
+# Test against custom URL
+BASE_URL=https://api.solixdb.xyz ./test-api.sh
+```
+
+The test suite covers:
+- Health check endpoint
+- All REST API endpoints
+- GraphQL queries
+- Rate limiting headers
 
 ## Project Structure
 
@@ -129,8 +128,6 @@ api/
 │   ├── types/           # TypeScript types
 │   └── index.ts         # Application entry point
 ├── docs/                # Documentation
-├── Dockerfile           # Docker configuration
-├── docker-compose.yml   # Docker Compose configuration
 └── package.json         # Dependencies
 ```
 
@@ -154,8 +151,7 @@ The service is optimized for ClickHouse:
 
 - **Helmet**: Security headers
 - **CORS**: Configurable CORS policies
-- **Rate Limiting**: Per API key rate limiting
-- **API Key Authentication**: Secure API key validation
+- **Rate Limiting**: IP-based rate limiting
 - **Input Validation**: Zod schema validation
 
 ## Monitoring
