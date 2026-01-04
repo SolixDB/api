@@ -17,8 +17,8 @@ export class CacheManager {
   private queryHitCounts: Map<string, number> = new Map();
   // In-memory LRU cache for ultra-fast hot queries
   private memoryCache: Map<string, LRUEntry<any>> = new Map();
-  private readonly MAX_MEMORY_CACHE_SIZE = 1000; // Max 1000 entries in memory
-  private readonly MEMORY_CACHE_TTL = 60000; // 1 minute TTL for memory cache
+  private readonly MAX_MEMORY_CACHE_SIZE = 5000; // Increased to 5000 entries for better hit rate
+  private readonly MEMORY_CACHE_TTL = 300000; // 5 minutes TTL for memory cache (longer for better hit rate)
 
   constructor() {
     this.initializeMaxBlockTime();
@@ -180,9 +180,10 @@ export class CacheManager {
 
   /**
    * Get cache value - two-tier: memory cache first (<1ms), then Redis
+   * SYNCHRONOUS for memory cache to avoid any async overhead
    */
-  async get<T>(cacheKey: string): Promise<T | null> {
-    // Tier 1: Check in-memory cache first (ultra-fast <1ms)
+  get<T>(cacheKey: string): T | null {
+    // Tier 1: Check in-memory cache first (ultra-fast <1ms, synchronous)
     const memoryEntry = this.memoryCache.get(cacheKey);
     if (memoryEntry) {
       const age = Date.now() - memoryEntry.timestamp;
@@ -195,8 +196,20 @@ export class CacheManager {
         this.memoryCache.delete(cacheKey);
       }
     }
+    return null;
+  }
 
-    // Tier 2: Check Redis cache
+  /**
+   * Async get for Redis fallback (only called if memory cache misses)
+   */
+  async getAsync<T>(cacheKey: string): Promise<T | null> {
+    // Check memory cache first (synchronous, instant)
+    const memoryValue = this.get<T>(cacheKey);
+    if (memoryValue !== null) {
+      return memoryValue;
+    }
+
+    // Tier 2: Check Redis cache (only if memory miss)
     try {
       metrics.redisOperationsTotal.inc({ operation: 'get' });
       const client = redisService.getClient();
@@ -208,7 +221,7 @@ export class CacheManager {
       // Fast JSON parse
       const parsed = JSON.parse(value) as T;
       
-      // Store in memory cache for next time (non-blocking)
+      // Store in memory cache for next time (synchronous, instant)
       this.setMemoryCache(cacheKey, parsed);
       
       return parsed;
