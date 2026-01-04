@@ -9,6 +9,7 @@
     "dev": "tsx watch src/index.ts",
     "lint": "eslint src --ext .ts",
     "test": "jest",
+    "test:comprehensive": "tsx test/comprehensive.test.ts",
     "prepare": "husky"
   },
   "keywords": [
