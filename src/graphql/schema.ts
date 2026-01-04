@@ -18,6 +18,28 @@ export const typeDefs = gql`
     accountsCount: Int!
     date: Date!
     hour: Int!
+    # Aggregation fields (optional, only present when groupBy is used)
+    protocol: String
+    count: BigInt
+    sumFee: BigInt
+    avgFee: Float
+    minFee: BigInt
+    maxFee: BigInt
+    p50Fee: Float
+    p95Fee: Float
+    p99Fee: Float
+    sumComputeUnits: BigInt
+    avgComputeUnits: Float
+    minComputeUnits: BigInt
+    maxComputeUnits: BigInt
+    p50ComputeUnits: Float
+    p95ComputeUnits: Float
+    p99ComputeUnits: Float
+    sumAccountsCount: BigInt
+    avgAccountsCount: Float
+    dayOfWeek: Int
+    week: Date
+    month: Date
   }
 
   type FailedTransaction {

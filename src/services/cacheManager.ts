@@ -169,16 +169,21 @@ export class CacheManager {
 
   /**
    * Get cache value
+   * Optimized for performance - uses direct Redis get
    */
   async get<T>(cacheKey: string): Promise<T | null> {
     try {
       metrics.redisOperationsTotal.inc({ operation: 'get' });
-      const value = await redisService.get<T>(cacheKey);
-      if (value) {
-        return value;
+      // Use direct Redis get for better performance
+      const client = redisService.getClient();
+      const value = await client.get(cacheKey);
+      if (!value) {
+        metrics.cacheMissesTotal.inc();
+        return null;
       }
-      metrics.cacheMissesTotal.inc();
-      return null;
+      // Fast JSON parse
+      const parsed = JSON.parse(value) as T;
+      return parsed;
     } catch (error) {
       logger.error('Cache get error', error as Error, { cacheKey });
       metrics.cacheMissesTotal.inc();
