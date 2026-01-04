@@ -88,6 +88,7 @@ class TestRunner {
   ): Promise<BenchmarkResult> {
     const times: number[] = [];
     let errors = 0;
+    let firstError: string | null = null;
 
     console.log(`\n📊 Benchmarking: ${name} (${iterations} iterations)`);
 
@@ -96,9 +97,12 @@ class TestRunner {
       try {
         await operation();
         times.push(Date.now() - start);
-      } catch (error) {
+      } catch (error: any) {
         errors++;
         times.push(Date.now() - start);
+        if (!firstError) {
+          firstError = error.message || String(error);
+        }
       }
 
       if ((i + 1) % 10 === 0) {
@@ -125,7 +129,11 @@ class TestRunner {
     };
 
     this.benchmarks.push(result);
-    console.log(`\n   Avg: ${avgTime.toFixed(2)}ms | P50: ${p50}ms | P95: ${p95}ms | P99: ${p99}ms | Errors: ${errors}`);
+    let errorMsg = '';
+    if (errors > 0 && firstError) {
+      errorMsg = ` | First error: ${firstError.substring(0, 100)}`;
+    }
+    console.log(`\n   Avg: ${avgTime.toFixed(2)}ms | P50: ${p50}ms | P95: ${p95}ms | P99: ${p99}ms | Errors: ${errors}${errorMsg}`);
 
     return result;
   }

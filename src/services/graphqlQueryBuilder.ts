@@ -106,7 +106,7 @@ export class GraphQLQueryBuilder {
   /**
    * Builds ORDER BY clause
    */
-  private getOrderByClause(sort?: SortInput, groupBy?: GroupByDimension[]): string {
+  private getOrderByClause(sort?: SortInput, groupBy?: GroupByDimension[], isAggregation?: boolean): string {
     if (!sort) {
       // Default ordering
       if (groupBy && groupBy.length > 0) {
@@ -142,8 +142,29 @@ export class GraphQLQueryBuilder {
       case 'INSTRUCTION_TYPE':
         field = 'instruction_type';
         break;
+      // Aggregation sort fields - use the alias from aggregation
+      case 'COUNT':
+        field = 'count';
+        break;
+      case 'AVG_FEE':
+        field = 'avgfee'; // matches alias from getAggregationAlias (AVG_FEE -> avgfee)
+        break;
+      case 'SUM_FEE':
+        field = 'sumfee'; // SUM_FEE -> sumfee
+        break;
+      case 'P95_FEE':
+        field = 'p95fee'; // P95_FEE -> p95fee
+        break;
+      case 'P99_FEE':
+        field = 'p99fee'; // P99_FEE -> p99fee
+        break;
       default:
-        field = 'date';
+        // For aggregations, default to count if available, otherwise first groupBy
+        if (isAggregation) {
+          field = 'count';
+        } else {
+          field = 'date';
+        }
     }
 
     const direction = sort.direction === 'ASC' ? 'ASC' : 'DESC';
@@ -347,7 +368,7 @@ export class GraphQLQueryBuilder {
     }
 
     // Build ORDER BY clause
-    const orderByClause = this.getOrderByClause(sort, groupBy);
+    const orderByClause = this.getOrderByClause(sort, groupBy, isAggregation);
 
     // Build LIMIT clause
     const limitClause = pagination?.first || pagination?.last || limit;
