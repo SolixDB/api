@@ -77,6 +77,10 @@ export class RedisService {
   async close(): Promise<void> {
     await this.client.quit();
   }
+
+  getClient(): Redis {
+    return this.client;
+  }
 }
 
 export const redisService = new RedisService();
