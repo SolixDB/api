@@ -226,6 +226,12 @@ export const typeDefs = gql`
     PROTOCOL
     PROGRAM_ID
     INSTRUCTION_TYPE
+    # Aggregation sort fields
+    COUNT
+    AVG_FEE
+    SUM_FEE
+    P95_FEE
+    P99_FEE
   }
 
   enum SortDirection {

@@ -77,6 +77,12 @@ export enum SortField {
   PROTOCOL = 'PROTOCOL',
   PROGRAM_ID = 'PROGRAM_ID',
   INSTRUCTION_TYPE = 'INSTRUCTION_TYPE',
+  // Aggregation sort fields
+  COUNT = 'COUNT',
+  AVG_FEE = 'AVG_FEE',
+  SUM_FEE = 'SUM_FEE',
+  P95_FEE = 'P95_FEE',
+  P99_FEE = 'P99_FEE',
 }
 
 export enum SortDirection {
