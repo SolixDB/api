@@ -172,7 +172,36 @@ export class GraphQLQueryBuilder {
    * Encodes cursor for pagination (format: slot:signature)
    */
   encodeCursor(slot: number, signature: string): string {
-    return `${slot}:${signature}`;
+    return Buffer.from(`${slot}:${signature}`).toString('base64');
+  }
+
+  /**
+   * Encode cursor for aggregation results (uses groupBy dimensions)
+   */
+  encodeAggregationCursor(node: any, groupBy?: GroupByDimension[]): string {
+    const cursorParts: string[] = [];
+    if (groupBy && groupBy.length > 0) {
+      groupBy.forEach((dim) => {
+        const fieldName = dim.toLowerCase();
+        if (node[fieldName] !== undefined && node[fieldName] !== null) {
+          cursorParts.push(`${fieldName}:${node[fieldName]}`);
+        }
+      });
+    }
+    // Add a hash of all aggregation values as fallback
+    const nodeStr = JSON.stringify(node);
+    cursorParts.push(`hash:${this.simpleHash(nodeStr)}`);
+    return Buffer.from(cursorParts.join('|')).toString('base64');
+  }
+
+  private simpleHash(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash;
+    }
+    return Math.abs(hash).toString(36);
   }
 
   /**

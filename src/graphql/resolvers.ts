@@ -190,7 +190,14 @@ export const resolvers = {
 
         // Build edges with cursors
         const edges: TransactionEdge[] = nodes.map((node: any) => {
-          const cursor = graphqlQueryBuilder.encodeCursor(node.slot || 0, node.signature || '');
+          // For aggregation results, use groupBy dimensions for cursor
+          let cursor: string;
+          if (isAgg) {
+            cursor = graphqlQueryBuilder.encodeAggregationCursor(node, groupBy);
+          } else {
+            // Regular transaction: use slot and signature
+            cursor = graphqlQueryBuilder.encodeCursor(node.slot || 0, node.signature || '');
+          }
           return {
             node,
             cursor,
@@ -211,9 +218,12 @@ export const resolvers = {
           pageInfo,
         };
 
-        // Cache result
+        // Cache result (non-blocking - fire and forget)
         const ttl = cacheManager.getCacheTTL(cacheKey, isAgg, filters.dateRange);
-        await cacheManager.set(cacheKey, connection, ttl, isAgg, filters.dateRange);
+        // Don't await - let it cache in background to avoid blocking response
+        cacheManager.set(cacheKey, connection, ttl, isAgg, filters.dateRange).catch((err) => {
+          logger.error('Background cache set failed', err as Error, { cacheKey });
+        });
 
         return connection;
       } catch (error: any) {
@@ -296,7 +306,10 @@ export const resolvers = {
       const transaction = results[0] || null;
 
       if (transaction) {
-        await cacheManager.set(cacheKey, transaction, config.cache.historicalDataTTL);
+        // Cache result (non-blocking)
+        cacheManager.set(cacheKey, transaction, config.cache.historicalDataTTL).catch((err) => {
+          logger.error('Background cache set failed', err as Error, { cacheKey });
+        });
       }
 
       return transaction;
