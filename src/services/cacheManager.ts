@@ -4,10 +4,21 @@ import { config } from '../config';
 import { logger } from './logger';
 import { metrics } from './metrics';
 
+// Simple LRU cache for in-memory hot queries (<1ms access)
+interface LRUEntry<T> {
+  value: T;
+  timestamp: number;
+  accessCount: number;
+}
+
 export class CacheManager {
   private maxBlockTime: number | null = null;
   private invalidationInterval: NodeJS.Timeout | null = null;
   private queryHitCounts: Map<string, number> = new Map();
+  // In-memory LRU cache for ultra-fast hot queries
+  private memoryCache: Map<string, LRUEntry<any>> = new Map();
+  private readonly MAX_MEMORY_CACHE_SIZE = 5000; // Increased to 5000 entries for better hit rate
+  private readonly MEMORY_CACHE_TTL = 300000; // 5 minutes TTL for memory cache (longer for better hit rate)
 
   constructor() {
     this.initializeMaxBlockTime();
@@ -168,13 +179,39 @@ export class CacheManager {
   }
 
   /**
-   * Get cache value
-   * Optimized for performance - uses direct Redis get
+   * Get cache value - two-tier: memory cache first (<1ms), then Redis
+   * SYNCHRONOUS for memory cache to avoid any async overhead
    */
-  async get<T>(cacheKey: string): Promise<T | null> {
+  get<T>(cacheKey: string): T | null {
+    // Tier 1: Check in-memory cache first (ultra-fast <1ms, synchronous)
+    const memoryEntry = this.memoryCache.get(cacheKey);
+    if (memoryEntry) {
+      const age = Date.now() - memoryEntry.timestamp;
+      if (age < this.MEMORY_CACHE_TTL) {
+        // Update access count for LRU eviction
+        memoryEntry.accessCount++;
+        return memoryEntry.value as T;
+      } else {
+        // Expired, remove from memory
+        this.memoryCache.delete(cacheKey);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Async get for Redis fallback (only called if memory cache misses)
+   */
+  async getAsync<T>(cacheKey: string): Promise<T | null> {
+    // Check memory cache first (synchronous, instant)
+    const memoryValue = this.get<T>(cacheKey);
+    if (memoryValue !== null) {
+      return memoryValue;
+    }
+
+    // Tier 2: Check Redis cache (only if memory miss)
     try {
       metrics.redisOperationsTotal.inc({ operation: 'get' });
-      // Use direct Redis get for better performance
       const client = redisService.getClient();
       const value = await client.get(cacheKey);
       if (!value) {
@@ -183,6 +220,10 @@ export class CacheManager {
       }
       // Fast JSON parse
       const parsed = JSON.parse(value) as T;
+      
+      // Store in memory cache for next time (synchronous, instant)
+      this.setMemoryCache(cacheKey, parsed);
+      
       return parsed;
     } catch (error) {
       logger.error('Cache get error', error as Error, { cacheKey });
@@ -192,8 +233,38 @@ export class CacheManager {
   }
 
   /**
+   * Set value in memory cache with LRU eviction
+   */
+  private setMemoryCache<T>(key: string, value: T): void {
+    // Evict if cache is full (LRU: remove least recently used)
+    if (this.memoryCache.size >= this.MAX_MEMORY_CACHE_SIZE) {
+      // Find least recently used entry (lowest accessCount, oldest timestamp)
+      let lruKey: string | null = null;
+      let lruScore = Infinity;
+      
+      for (const [k, entry] of this.memoryCache.entries()) {
+        const score = entry.accessCount * 1000000 + (Date.now() - entry.timestamp);
+        if (score < lruScore) {
+          lruScore = score;
+          lruKey = k;
+        }
+      }
+      
+      if (lruKey) {
+        this.memoryCache.delete(lruKey);
+      }
+    }
+    
+    this.memoryCache.set(key, {
+      value,
+      timestamp: Date.now(),
+      accessCount: 1,
+    });
+  }
+
+  /**
    * Set cache value with appropriate TTL
-   * Optimized for performance - uses pipeline for faster writes
+   * Two-tier: memory cache (immediate) + Redis (background)
    */
   async set(
     cacheKey: string,
@@ -203,31 +274,34 @@ export class CacheManager {
     dateRange?: { start?: string; end?: string }
   ): Promise<void> {
     const finalTTL = ttl || this.getCacheTTL(cacheKey, isAggregation, dateRange);
-    metrics.redisOperationsTotal.inc({ operation: 'set' });
     
-    try {
-      // Use direct setex for better performance (simpler than pipeline for single operation)
-      const client = redisService.getClient();
-      const serialized = JSON.stringify(value);
-      await client.setex(cacheKey, finalTTL, serialized);
-    } catch (error) {
-      logger.error('Cache set error', error as Error, { cacheKey });
-      // Fallback to regular set if setex fails
-      try {
-        await redisService.set(cacheKey, value, finalTTL);
-      } catch (fallbackError) {
-        logger.error('Cache set fallback error', fallbackError as Error, { cacheKey });
-      }
-    }
+    // Tier 1: Set in-memory cache immediately (<1ms)
+    this.setMemoryCache(cacheKey, value);
+    
+    // Tier 2: Set in Redis (non-blocking, fire-and-forget)
+    metrics.redisOperationsTotal.inc({ operation: 'set' });
+    const client = redisService.getClient();
+    const serialized = JSON.stringify(value);
+    
+    // Don't await - let Redis write happen in background
+    client.setex(cacheKey, finalTTL, serialized).catch((error) => {
+      logger.error('Background Redis cache set error', error as Error, { cacheKey });
+    });
   }
 
   /**
-   * Delete cache key
+   * Delete cache key from both memory and Redis
    */
   async del(cacheKey: string): Promise<void> {
+    // Delete from memory cache immediately
+    this.memoryCache.delete(cacheKey);
+    
+    // Delete from Redis (non-blocking)
     try {
       metrics.redisOperationsTotal.inc({ operation: 'del' });
-      await redisService.del(cacheKey);
+      redisService.del(cacheKey).catch((error) => {
+        logger.error('Background Redis cache del error', error as Error, { cacheKey });
+      });
       this.queryHitCounts.delete(cacheKey);
     } catch (error) {
       logger.error('Cache del error', error as Error, { cacheKey });
@@ -248,6 +322,18 @@ export class CacheManager {
     if (this.invalidationInterval) {
       clearInterval(this.invalidationInterval);
     }
+    this.memoryCache.clear();
+  }
+
+  /**
+   * Get memory cache stats for monitoring
+   */
+  getMemoryCacheStats() {
+    return {
+      size: this.memoryCache.size,
+      maxSize: this.MAX_MEMORY_CACHE_SIZE,
+      hitRate: this.memoryCache.size > 0 ? 1 : 0, // Simplified
+    };
   }
 }
 

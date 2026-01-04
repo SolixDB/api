@@ -997,12 +997,23 @@ async function runTests() {
           }
         }
       `;
-      // First request (cache miss)
+      // First request (cache miss) - warm up
+      const start1 = Date.now();
       await runner.runGraphQLQuery(query);
-      // Subsequent requests (should hit cache)
+      const firstQueryTime = Date.now() - start1;
+      console.log(`\n   First query (cache miss): ${firstQueryTime}ms`);
+      
+      // Subsequent requests (should hit memory cache <1ms each)
+      const cacheHitTimes: number[] = [];
       for (let i = 0; i < 19; i++) {
+        const start = Date.now();
         await runner.runGraphQLQuery(query);
+        cacheHitTimes.push(Date.now() - start);
       }
+      const avgCacheHit = cacheHitTimes.reduce((a, b) => a + b, 0) / cacheHitTimes.length;
+      const minCacheHit = Math.min(...cacheHitTimes);
+      const maxCacheHit = Math.max(...cacheHitTimes);
+      console.log(`   Cache hits (19 queries): avg ${avgCacheHit.toFixed(2)}ms, min ${minCacheHit}ms, max ${maxCacheHit}ms`);
     },
     1
   );

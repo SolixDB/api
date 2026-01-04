@@ -73,8 +73,32 @@ export const resolvers = {
       const aggregationMetrics = convertMetrics(args.metrics);
       const isAggregation = (groupBy && groupBy.length > 0) || (aggregationMetrics && aggregationMetrics.length > 0);
 
+      // Generate cache key EARLY (before complexity calculation for maximum performance)
+      const cacheKey = cacheManager.generateCacheKey('transactions', {
+        filters,
+        groupBy,
+        metrics: aggregationMetrics,
+        sort: args.sort,
+        pagination: args.pagination,
+      });
+
+      // Try memory cache FIRST (synchronous, <1ms) - if hit, return immediately
+      // This bypasses ALL complexity calculation, query building, and DB access
+      const cached = cacheManager.get<TransactionConnection>(cacheKey);
+      if (cached) {
+        metrics.graphqlQueryTotal.inc({ query: 'transactions', status: 'cached' });
+        return cached; // <1ms return path
+      }
+
+      // Try Redis cache (async, only if memory miss) - still fast but async overhead
+      const redisCached = await cacheManager.getAsync<TransactionConnection>(cacheKey);
+      if (redisCached) {
+        metrics.graphqlQueryTotal.inc({ query: 'transactions', status: 'cached' });
+        return redisCached; // ~5-10ms return path
+      }
+
       try {
-        // Calculate complexity
+        // Only calculate complexity if cache miss
         const complexity = await queryComplexityService.calculateComplexity(
           filters,
           groupBy,
@@ -126,22 +150,6 @@ export const resolvers = {
               }
             );
           }
-        }
-
-        // Generate cache key
-        const cacheKey = cacheManager.generateCacheKey('transactions', {
-          filters,
-          groupBy,
-          metrics: aggregationMetrics,
-          sort: args.sort,
-          pagination: args.pagination,
-        });
-
-        // Try cache
-        const cached = await cacheManager.get<TransactionConnection>(cacheKey);
-        if (cached) {
-          metrics.graphqlQueryTotal.inc({ query: 'transactions', status: 'cached' });
-          return cached;
         }
 
         // Build query
