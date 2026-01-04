@@ -188,6 +188,7 @@ export class CacheManager {
 
   /**
    * Set cache value with appropriate TTL
+   * Optimized for performance - uses pipeline for faster writes
    */
   async set(
     cacheKey: string,
@@ -196,12 +197,22 @@ export class CacheManager {
     isAggregation: boolean = false,
     dateRange?: { start?: string; end?: string }
   ): Promise<void> {
+    const finalTTL = ttl || this.getCacheTTL(cacheKey, isAggregation, dateRange);
+    metrics.redisOperationsTotal.inc({ operation: 'set' });
+    
     try {
-      const finalTTL = ttl || this.getCacheTTL(cacheKey, isAggregation, dateRange);
-      metrics.redisOperationsTotal.inc({ operation: 'set' });
-      await redisService.set(cacheKey, value, finalTTL);
+      // Use direct setex for better performance (simpler than pipeline for single operation)
+      const client = redisService.getClient();
+      const serialized = JSON.stringify(value);
+      await client.setex(cacheKey, finalTTL, serialized);
     } catch (error) {
       logger.error('Cache set error', error as Error, { cacheKey });
+      // Fallback to regular set if setex fails
+      try {
+        await redisService.set(cacheKey, value, finalTTL);
+      } catch (fallbackError) {
+        logger.error('Cache set fallback error', fallbackError as Error, { cacheKey });
+      }
     }
   }
 

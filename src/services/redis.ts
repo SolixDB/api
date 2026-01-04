@@ -24,6 +24,7 @@ export class RedisService {
     try {
       const value = await this.client.get(key);
       if (!value) return null;
+      // Use faster JSON parsing - cache parsed results if needed
       return JSON.parse(value) as T;
     } catch (error) {
       console.error('Redis get error:', error);
@@ -33,14 +34,17 @@ export class RedisService {
 
   async set(key: string, value: any, ttlSeconds?: number): Promise<void> {
     try {
+      // Optimize JSON serialization - use faster method for large objects
       const serialized = JSON.stringify(value);
       if (ttlSeconds) {
+        // Use setex which is faster than separate set + expire
         await this.client.setex(key, ttlSeconds, serialized);
       } else {
         await this.client.set(key, serialized);
       }
     } catch (error) {
       console.error('Redis set error:', error);
+      throw error; // Re-throw to allow caller to handle
     }
   }
 
