@@ -21,6 +21,7 @@ import { cacheManager } from './services/cacheManager';
 import { clickhouseService } from './services/clickhouse';
 import { jobQueueService } from './services/jobQueue';
 import { v4 as uuidv4 } from 'uuid';
+import v8 from 'v8';
 
 const app = express();
 
@@ -42,20 +43,24 @@ app.use((req, res, next) => {
   const heapTotalMB = usage.heapTotal / 1024 / 1024;
   const heapUsedPercent = (usage.heapUsed / usage.heapTotal) * 100;
 
-  // Detect if Node.js heap is too small (likely NODE_OPTIONS not set)
-  // If heap is < 100MB, it's probably not configured correctly
-  const isHeapTooSmall = heapTotalMB < 100;
+  // Get max heap limit to check if it's configured correctly
+  const heapStats = v8.getHeapStatistics();
+  const maxHeapMB = heapStats.heap_size_limit / 1024 / 1024;
   
-  if (isHeapTooSmall) {
+  // Detect if Node.js max heap is misconfigured (likely NODE_OPTIONS not set)
+  // If max heap is < 100MB, it's probably not configured correctly
+  const isHeapMisconfigured = maxHeapMB < 100;
+  
+  if (isHeapMisconfigured) {
     // Don't reject - this is a configuration issue, not a real memory problem
     // Just log a warning (only once per minute to avoid spam)
     const now = Date.now();
     const lastWarningKey = 'heap_size_warning_last_logged';
     const lastWarning = (global as any)[lastWarningKey] || 0;
     if (now - lastWarning > 60000) { // Log max once per minute
-      logger.warn('Node.js heap size is very small - NODE_OPTIONS may not be set', {
-        heapTotalMB: Math.round(heapTotalMB),
-        heapUsedMB: Math.round(heapUsedMB),
+      logger.warn('Node.js max heap size is very small - NODE_OPTIONS may not be set', {
+        currentHeapMB: Math.round(heapTotalMB),
+        maxHeapMB: Math.round(maxHeapMB),
         expectedMB: config.memory.maxHeapMB,
         recommendation: `Set NODE_OPTIONS="--max-old-space-size=${config.memory.maxHeapMB}" before starting the server`,
         note: 'Requests will not be rejected due to small heap size - this is a configuration issue, not a memory constraint.',
@@ -67,16 +72,18 @@ app.use((req, res, next) => {
     return;
   }
 
-  // Only reject when heap is actually large (> 1GB) AND usage is high
+  // Only reject when max heap is large (> 1GB) AND current allocation is large AND usage is high
   // This protects against real OOM scenarios, not configuration issues
-  const isLargeHeap = heapTotalMB > 1024; // > 1GB
+  const isLargeMaxHeap = maxHeapMB > 1024; // Max heap > 1GB
+  const isLargeCurrentHeap = heapTotalMB > 1024; // Current allocation > 1GB
   const isHighUsage = heapUsedPercent > config.memory.rejectThresholdPercent;
   
-  if (isLargeHeap && isHighUsage && !isHealthOrMetrics) {
+  if (isLargeMaxHeap && isLargeCurrentHeap && isHighUsage && !isHealthOrMetrics) {
     logger.warn('Memory usage high on large heap, rejecting request', {
       heapUsedPercent: Math.round(heapUsedPercent),
       heapUsedMB: Math.round(heapUsedMB),
-      heapTotalMB: Math.round(heapTotalMB),
+      currentHeapMB: Math.round(heapTotalMB),
+      maxHeapMB: Math.round(maxHeapMB),
       path: req.path,
     });
 
@@ -96,9 +103,10 @@ app.use((req, res, next) => {
       logger.warn('Memory usage high', {
         heapUsedPercent: Math.round(heapUsedPercent),
         heapUsedMB: Math.round(heapUsedMB),
-        heapTotalMB: Math.round(heapTotalMB),
+        currentHeapMB: Math.round(heapTotalMB),
+        maxHeapMB: Math.round(maxHeapMB),
         path: req.path,
-        action: isHealthOrMetrics ? 'allowing (critical endpoint)' : isLargeHeap ? 'rejecting' : 'allowing (small heap)',
+        action: isHealthOrMetrics ? 'allowing (critical endpoint)' : isLargeCurrentHeap ? 'rejecting' : 'allowing (heap will grow)',
       });
       (global as any)[lastWarningKey] = now;
     }
@@ -162,23 +170,32 @@ const apolloServer = new ApolloServer({
 
 async function startServer() {
   // Check Node.js heap size at startup
-  const usage = process.memoryUsage();
-  const heapTotalMB = usage.heapTotal / 1024 / 1024;
+  // Use v8.getHeapStatistics() to get the actual max heap limit, not just current allocation
+  const heapStats = v8.getHeapStatistics();
+  const maxHeapMB = heapStats.heap_size_limit / 1024 / 1024;
+  const currentHeapMB = process.memoryUsage().heapTotal / 1024 / 1024;
   const expectedHeapMB = config.memory.maxHeapMB;
   
-  if (heapTotalMB < 100) {
-    logger.warn('⚠️  Node.js heap size is very small!', {
-      currentHeapMB: Math.round(heapTotalMB),
+  // Check if max heap is configured correctly (should be close to expected, allow 10% variance)
+  const isHeapConfigured = maxHeapMB >= expectedHeapMB * 0.9;
+  
+  if (!isHeapConfigured) {
+    logger.warn('⚠️  Node.js max heap size is smaller than expected!', {
+      currentHeapMB: Math.round(currentHeapMB),
+      maxHeapMB: Math.round(maxHeapMB),
       expectedHeapMB,
       recommendation: `Set NODE_OPTIONS="--max-old-space-size=${expectedHeapMB}" before starting the server`,
       note: 'The server will still run, but may reject requests due to memory constraints. Health checks will always work.',
     });
-    console.warn(`\n⚠️  WARNING: Node.js heap size is only ${Math.round(heapTotalMB)}MB (expected ${expectedHeapMB}MB)`);
+    console.warn(`\n⚠️  WARNING: Node.js max heap size is ${Math.round(maxHeapMB)}MB (expected ${expectedHeapMB}MB)`);
+    console.warn(`   Current allocated heap: ${Math.round(currentHeapMB)}MB (will grow as needed)`);
     console.warn(`   Set NODE_OPTIONS="--max-old-space-size=${expectedHeapMB}" before starting the server\n`);
   } else {
-    logger.info('Node.js heap size configured', {
-      heapTotalMB: Math.round(heapTotalMB),
+    logger.info('Node.js heap size configured correctly', {
+      currentHeapMB: Math.round(currentHeapMB),
+      maxHeapMB: Math.round(maxHeapMB),
       expectedHeapMB,
+      note: 'Initial heap is small by design - it will grow as needed up to the max limit.',
     });
   }
 
@@ -217,7 +234,8 @@ async function startServer() {
     logger.info('Server started', {
       port: config.server.port,
       nodeEnv: config.server.nodeEnv,
-      heapTotalMB: Math.round(heapTotalMB),
+      currentHeapMB: Math.round(currentHeapMB),
+      maxHeapMB: Math.round(maxHeapMB),
     });
     console.log(`Server running on port ${config.server.port}`);
     console.log(`GraphQL: http://localhost:${config.server.port}/graphql`);
