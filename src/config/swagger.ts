@@ -1,6 +1,28 @@
 import swaggerJsdoc from 'swagger-jsdoc';
 import path from 'path';
+import { existsSync } from 'fs';
 import { config } from './index';
+
+// Find the source directory - works in both dev and production
+function findSourceDir(): string {
+  // Try to find src directory relative to current location
+  const possiblePaths = [
+    path.join(process.cwd(), 'src'), // From project root
+    path.join(__dirname, '../../src'), // From dist/config
+    path.join(__dirname, '../src'), // If running from src/config directly
+  ];
+  
+  for (const srcPath of possiblePaths) {
+    if (existsSync(srcPath)) {
+      return srcPath;
+    }
+  }
+  
+  // Fallback to process.cwd() + src
+  return path.join(process.cwd(), 'src');
+}
+
+const srcDir = findSourceDir();
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -130,10 +152,36 @@ const options: swaggerJsdoc.Options = {
     },
   },
   apis: [
-    path.join(__dirname, '../routes/*.ts'),
-    path.join(__dirname, '../index.ts'),
+    path.join(srcDir, 'routes/*.ts'),
+    path.join(srcDir, 'index.ts'),
   ],
 };
 
-export const swaggerSpec = swaggerJsdoc(options);
+// Generate swagger spec with error handling
+let swaggerSpec: any;
+try {
+  swaggerSpec = swaggerJsdoc(options);
+  
+  // Log if spec was generated successfully (only in dev mode to avoid spam)
+  if (process.env.NODE_ENV !== 'production') {
+    const paths = Object.keys(swaggerSpec.paths || {});
+    console.log(`✅ Swagger spec generated successfully with ${paths.length} endpoints`);
+    console.log(`   Source directory: ${srcDir}`);
+    console.log(`   Endpoints found: ${paths.join(', ')}`);
+  }
+} catch (error) {
+  console.error('❌ Failed to generate Swagger spec:', error);
+  // Provide a minimal spec so the UI still loads
+  swaggerSpec = {
+    openapi: '3.0.0',
+    info: {
+      title: 'SolixDB API',
+      version: '1.0.0',
+      description: 'Error loading API documentation',
+    },
+    paths: {},
+  };
+}
+
+export { swaggerSpec };
 

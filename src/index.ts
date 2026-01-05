@@ -142,6 +142,12 @@ app.get('/', swaggerUi.setup(swaggerSpec, {
   swaggerOptions: {
     persistAuthorization: true,
     displayRequestDuration: true,
+    tryItOutEnabled: true,
+    supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
+    validatorUrl: null, // Disable online validator
+    filter: true, // Enable filter box
+    showExtensions: true,
+    showCommonExtensions: true,
   },
 }));
 
@@ -250,6 +256,66 @@ async function startServer() {
   await apolloServer.start();
   
   // GraphQL endpoint (public, rate limited by IP)
+  /**
+   * @swagger
+   * /graphql:
+   *   post:
+   *     summary: Execute a GraphQL query
+   *     description: |
+   *       Execute GraphQL queries and mutations against the SolixDB GraphQL API.
+   *       Use the interactive GraphQL playground at /graphql for testing queries.
+   *       This endpoint accepts standard GraphQL POST requests with query, variables, and operationName.
+   *     tags: [GraphQL]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - query
+   *             properties:
+   *               query:
+   *                 type: string
+   *                 description: GraphQL query string
+   *                 example: "query { transactions(limit: 10) { signature timestamp } }"
+   *               variables:
+   *                 type: object
+   *                 description: GraphQL variables (optional)
+   *                 additionalProperties: true
+   *               operationName:
+   *                 type: string
+   *                 description: Name of the operation to execute (for multi-operation queries)
+   *     responses:
+   *       200:
+   *         description: GraphQL query executed successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 data:
+   *                   type: object
+   *                   description: GraphQL response data
+   *                   additionalProperties: true
+   *                 errors:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                   description: GraphQL errors (if any)
+   *       400:
+   *         description: Invalid GraphQL query
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/Error'
+   *       500:
+   *         description: GraphQL execution error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/Error'
+   */
   app.use(
     '/graphql',
     rateLimit,
