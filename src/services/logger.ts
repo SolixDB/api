@@ -1,6 +1,7 @@
 import pino from 'pino';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config';
+import v8 from 'v8';
 
 export interface LoggerContext {
   correlationId?: string;
@@ -99,31 +100,51 @@ class LoggerService {
     const usage = process.memoryUsage();
     const heapUsedMB = Math.round(usage.heapUsed / 1024 / 1024);
     const heapTotalMB = Math.round(usage.heapTotal / 1024 / 1024);
-    const heapUsedPercent = Math.round((usage.heapUsed / usage.heapTotal) * 100);
+    const rssMB = Math.round(usage.rss / 1024 / 1024);
+    const externalMB = Math.round(usage.external / 1024 / 1024);
+    
+    // Get max heap limit for more meaningful percentage
+    const heapStats = v8.getHeapStatistics();
+    const maxHeapMB = Math.round(heapStats.heap_size_limit / 1024 / 1024);
+    
+    // Percentage of currently allocated heap (can be high when heap is small)
+    const heapUsedPercentOfAllocated = Math.round((usage.heapUsed / usage.heapTotal) * 100);
+    // Percentage of max heap limit (more meaningful metric)
+    const heapUsedPercentOfMax = Math.round((usage.heapUsed / heapStats.heap_size_limit) * 100);
 
-    this.createChild({
-      memory: {
-        heapUsedMB,
-        heapTotalMB,
-        heapUsedPercent,
-        rssMB: Math.round(usage.rss / 1024 / 1024),
-        externalMB: Math.round(usage.external / 1024 / 1024),
+    // Create a human-readable summary
+    const summary = `Heap: ${heapUsedMB}MB used / ${heapTotalMB}MB allocated / ${maxHeapMB}MB max | ${heapUsedPercentOfAllocated}% of allocated, ${heapUsedPercentOfMax.toFixed(2)}% of max | RSS: ${rssMB}MB`;
+
+    this.info('Memory usage', {
+      heap: {
+        usedMB: heapUsedMB,
+        allocatedMB: heapTotalMB,
+        maxMB: maxHeapMB,
+        usedPercentOfAllocated: heapUsedPercentOfAllocated,
+        usedPercentOfMax: parseFloat(heapUsedPercentOfMax.toFixed(2)),
       },
-    }).info('Memory usage');
+      rssMB,
+      externalMB,
+      summary,
+    });
 
     // Only warn if heap is actually large (> 1GB) and usage is high
-    // Small heaps (< 100MB) are configuration issues, not real memory problems
-    const isLargeHeap = heapTotalMB > 1024;
-    if (isLargeHeap && heapUsedPercent > config.memory.rejectThresholdPercent) {
-      this.warn(`Memory usage high: ${heapUsedPercent}%`, {
+    // Use max heap percentage for warnings, not allocated heap percentage
+    const isLargeHeap = maxHeapMB > 1024;
+    if (isLargeHeap && heapUsedPercentOfMax > config.memory.rejectThresholdPercent) {
+      this.warn(`Memory usage high: ${heapUsedPercentOfMax.toFixed(2)}% of max heap (${heapUsedMB}MB / ${maxHeapMB}MB)`, {
         heapUsedMB,
         heapTotalMB,
+        maxHeapMB,
+        heapUsedPercentOfMax: parseFloat(heapUsedPercentOfMax.toFixed(2)),
+        threshold: config.memory.rejectThresholdPercent,
       });
-    } else if (heapTotalMB < 100 && heapUsedPercent > config.memory.rejectThresholdPercent) {
+    } else if (maxHeapMB < 100 && heapUsedPercentOfAllocated > config.memory.rejectThresholdPercent) {
       // For small heaps, just log at debug level (not warning)
-      this.debug(`Small heap with high usage (configuration issue): ${heapUsedPercent}%`, {
+      this.debug(`Small heap with high usage (configuration issue): ${heapUsedPercentOfAllocated}% of allocated`, {
         heapUsedMB,
         heapTotalMB,
+        maxHeapMB,
         note: 'This is likely due to NODE_OPTIONS not being set. Requests will not be rejected.',
       });
     }
