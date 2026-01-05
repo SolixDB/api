@@ -142,7 +142,15 @@ app.get('/swagger.json', (_req, res) => {
 // Swagger UI at root
 app.use('/', swaggerUi.serve);
 app.get('/', swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
+  customCss: `
+    .swagger-ui .topbar { display: none }
+    .swagger-ui .opblock.opblock-get { border-color: #61affe; background: rgba(97,175,254,.1); }
+    .swagger-ui .opblock.opblock-post { border-color: #49cc90; background: rgba(73,204,144,.1); }
+    .swagger-ui .opblock-tag { cursor: pointer; }
+    .swagger-ui .opblock-tag-section { cursor: pointer; }
+    .swagger-ui .opblock-summary { cursor: pointer; }
+    .swagger-ui .opblock-summary:hover { background: rgba(0,0,0,.05); }
+  `,
   customSiteTitle: 'SolixDB API Documentation',
   customfavIcon: '/favicon.ico',
   swaggerOptions: {
@@ -152,9 +160,22 @@ app.get('/', swaggerUi.setup(swaggerSpec, {
     supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
     validatorUrl: null,
     filter: true,
-    docExpansion: 'list',
-    defaultModelsExpandDepth: 1,
-    defaultModelExpandDepth: 1,
+    docExpansion: 'full', // Expand all operations by default - 'none', 'list', or 'full'
+    defaultModelsExpandDepth: 2,
+    defaultModelExpandDepth: 2,
+    displayOperationId: false,
+    showExtensions: true,
+    showCommonExtensions: true,
+    deepLinking: true, // Enable deep linking for direct navigation
+    withCredentials: false,
+    requestInterceptor: (request: any) => {
+      // Ensure requests work properly
+      return request;
+    },
+    responseInterceptor: (response: any) => {
+      // Ensure responses are handled properly
+      return response;
+    },
   },
 }));
 
@@ -172,6 +193,7 @@ app.use('/api/v1/query', rateLimit, queryRouter);
  * @swagger
  * /admin/suggest-materialized-views:
  *   get:
+ *     operationId: getMaterializedViewSuggestions
  *     summary: Get materialized view suggestions
  *     description: Analyzes query logs to suggest materialized views for optimization (implementation pending)
  *     tags: [Admin]
@@ -267,6 +289,7 @@ async function startServer() {
    * @swagger
    * /graphql:
    *   post:
+   *     operationId: executeGraphQL
    *     summary: Execute a GraphQL query
    *     description: |
    *       Execute GraphQL queries and mutations against the SolixDB GraphQL API.

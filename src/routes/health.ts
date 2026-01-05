@@ -8,6 +8,7 @@ const router: Router = Router();
  * @swagger
  * /health:
  *   get:
+ *     operationId: getHealth
  *     summary: Health check endpoint
  *     description: Returns the health status of the API and its dependencies (ClickHouse, Redis)
  *     tags: [Health]
