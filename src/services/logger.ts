@@ -107,9 +107,9 @@ class LoggerService {
     const heapStats = v8.getHeapStatistics();
     const maxHeapMB = Math.round(heapStats.heap_size_limit / 1024 / 1024);
     
-    // Percentage of currently allocated heap (can be high when heap is small)
+    // Percentage of currently allocated heap
     const heapUsedPercentOfAllocated = Math.round((usage.heapUsed / usage.heapTotal) * 100);
-    // Percentage of max heap limit (more meaningful metric)
+    // Percentage of max heap limit
     const heapUsedPercentOfMax = Math.round((usage.heapUsed / heapStats.heap_size_limit) * 100);
 
     // Create a human-readable summary
@@ -127,27 +127,6 @@ class LoggerService {
       externalMB,
       summary,
     });
-
-    // Only warn if heap is actually large (> 1GB) and usage is high
-    // Use max heap percentage for warnings, not allocated heap percentage
-    const isLargeHeap = maxHeapMB > 1024;
-    if (isLargeHeap && heapUsedPercentOfMax > config.memory.rejectThresholdPercent) {
-      this.warn(`Memory usage high: ${heapUsedPercentOfMax.toFixed(2)}% of max heap (${heapUsedMB}MB / ${maxHeapMB}MB)`, {
-        heapUsedMB,
-        heapTotalMB,
-        maxHeapMB,
-        heapUsedPercentOfMax: parseFloat(heapUsedPercentOfMax.toFixed(2)),
-        threshold: config.memory.rejectThresholdPercent,
-      });
-    } else if (maxHeapMB < 100 && heapUsedPercentOfAllocated > config.memory.rejectThresholdPercent) {
-      // For small heaps, just log at debug level (not warning)
-      this.debug(`Small heap with high usage (configuration issue): ${heapUsedPercentOfAllocated}% of allocated`, {
-        heapUsedMB,
-        heapTotalMB,
-        maxHeapMB,
-        note: 'This is likely due to NODE_OPTIONS not being set. Requests will not be rejected.',
-      });
-    }
   }
 
   private getQuerySignature(query: string): string {

@@ -57,7 +57,7 @@ export const config = {
     jwtSecret: process.env.JWT_SECRET || process.env.SECRET || 'change-me-in-production',
   },
   memory: {
-    maxHeapMB: parseInt(process.env.MAX_HEAP_MB || '8192', 10),
+    maxHeapMB: parseInt(process.env.MAX_HEAP_MB || '16384', 10),
     rejectThresholdPercent: parseInt(process.env.MEMORY_REJECT_THRESHOLD_PERCENT || '80', 10),
   },
 };

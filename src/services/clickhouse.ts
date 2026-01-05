@@ -117,7 +117,6 @@ export class ClickHouseService {
         format: 'JSONEachRow',
         clickhouse_settings: {
           max_execution_time: queryTimeout.toString(),
-          max_memory_usage: '10000000000', // 10GB per query
         } as any,
       });
 
@@ -178,7 +177,6 @@ export class ClickHouseService {
         format: 'JSONEachRow',
         clickhouse_settings: {
           max_execution_time: queryTimeout.toString(),
-          max_memory_usage: '10000000000',
         } as any,
       });
 
