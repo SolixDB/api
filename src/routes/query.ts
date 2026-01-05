@@ -14,6 +14,7 @@ const querySchema = z.object({
  * @swagger
  * /api/v1/query:
  *   post:
+ *     operationId: executeQuery
  *     summary: Execute a read-only SQL query
  *     description: |
  *       Execute a read-only SQL SELECT query against ClickHouse.

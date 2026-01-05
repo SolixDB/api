@@ -54,15 +54,49 @@ app.use(express.json());
 // Metrics endpoint (before other routes)
 app.use(metricsMiddleware);
 
+// Swagger JSON endpoint for debugging
+app.get('/swagger.json', (_req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.json(swaggerSpec);
+});
+
 // Swagger UI at root
 app.use('/', swaggerUi.serve);
 app.get('/', swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
+  customCss: `
+    .swagger-ui .topbar { display: none }
+    .swagger-ui .opblock.opblock-get { border-color: #61affe; background: rgba(97,175,254,.1); }
+    .swagger-ui .opblock.opblock-post { border-color: #49cc90; background: rgba(73,204,144,.1); }
+    .swagger-ui .opblock-tag { cursor: pointer; }
+    .swagger-ui .opblock-tag-section { cursor: pointer; }
+    .swagger-ui .opblock-summary { cursor: pointer; }
+    .swagger-ui .opblock-summary:hover { background: rgba(0,0,0,.05); }
+  `,
   customSiteTitle: 'SolixDB API Documentation',
   customfavIcon: '/favicon.ico',
   swaggerOptions: {
     persistAuthorization: true,
     displayRequestDuration: true,
+    tryItOutEnabled: true,
+    supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
+    validatorUrl: null,
+    filter: true,
+    docExpansion: 'full', // Expand all operations by default - 'none', 'list', or 'full'
+    defaultModelsExpandDepth: 2,
+    defaultModelExpandDepth: 2,
+    displayOperationId: false,
+    showExtensions: true,
+    showCommonExtensions: true,
+    deepLinking: true, // Enable deep linking for direct navigation
+    withCredentials: false,
+    requestInterceptor: (request: any) => {
+      // Ensure requests work properly
+      return request;
+    },
+    responseInterceptor: (response: any) => {
+      // Ensure responses are handled properly
+      return response;
+    },
   },
 }));
 
@@ -80,6 +114,7 @@ app.use('/api/v1/query', rateLimit, queryRouter);
  * @swagger
  * /admin/suggest-materialized-views:
  *   get:
+ *     operationId: getMaterializedViewSuggestions
  *     summary: Get materialized view suggestions
  *     description: Analyzes query logs to suggest materialized views for optimization (implementation pending)
  *     tags: [Admin]
@@ -140,6 +175,67 @@ async function startServer() {
   await apolloServer.start();
   
   // GraphQL endpoint (public, rate limited by IP)
+  /**
+   * @swagger
+   * /graphql:
+   *   post:
+   *     operationId: executeGraphQL
+   *     summary: Execute a GraphQL query
+   *     description: |
+   *       Execute GraphQL queries and mutations against the SolixDB GraphQL API.
+   *       Use the interactive GraphQL playground at /graphql for testing queries.
+   *       This endpoint accepts standard GraphQL POST requests with query, variables, and operationName.
+   *     tags: [GraphQL]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - query
+   *             properties:
+   *               query:
+   *                 type: string
+   *                 description: GraphQL query string
+   *                 example: "query { transactions(limit: 10) { signature timestamp } }"
+   *               variables:
+   *                 type: object
+   *                 description: GraphQL variables (optional)
+   *                 additionalProperties: true
+   *               operationName:
+   *                 type: string
+   *                 description: Name of the operation to execute (for multi-operation queries)
+   *     responses:
+   *       200:
+   *         description: GraphQL query executed successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 data:
+   *                   type: object
+   *                   description: GraphQL response data
+   *                   additionalProperties: true
+   *                 errors:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                   description: GraphQL errors (if any)
+   *       400:
+   *         description: Invalid GraphQL query
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/Error'
+   *       500:
+   *         description: GraphQL execution error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/Error'
+   */
   app.use(
     '/graphql',
     rateLimit,
