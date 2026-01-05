@@ -33,14 +33,51 @@ app.use((_req, res, next) => {
 });
 
 // Memory monitoring middleware
-app.use((_req, res, next) => {
+// Smart memory protection: only reject when heap is actually large and under real pressure
+app.use((req, res, next) => {
+  const isHealthOrMetrics = req.path === '/health' || req.path === '/metrics';
+  
   const usage = process.memoryUsage();
+  const heapUsedMB = usage.heapUsed / 1024 / 1024;
+  const heapTotalMB = usage.heapTotal / 1024 / 1024;
   const heapUsedPercent = (usage.heapUsed / usage.heapTotal) * 100;
 
-  if (heapUsedPercent > config.memory.rejectThresholdPercent) {
-    logger.warn('Memory usage high, rejecting request', {
+  // Detect if Node.js heap is too small (likely NODE_OPTIONS not set)
+  // If heap is < 100MB, it's probably not configured correctly
+  const isHeapTooSmall = heapTotalMB < 100;
+  
+  if (isHeapTooSmall) {
+    // Don't reject - this is a configuration issue, not a real memory problem
+    // Just log a warning (only once per minute to avoid spam)
+    const now = Date.now();
+    const lastWarningKey = 'heap_size_warning_last_logged';
+    const lastWarning = (global as any)[lastWarningKey] || 0;
+    if (now - lastWarning > 60000) { // Log max once per minute
+      logger.warn('Node.js heap size is very small - NODE_OPTIONS may not be set', {
+        heapTotalMB: Math.round(heapTotalMB),
+        heapUsedMB: Math.round(heapUsedMB),
+        expectedMB: config.memory.maxHeapMB,
+        recommendation: `Set NODE_OPTIONS="--max-old-space-size=${config.memory.maxHeapMB}" before starting the server`,
+        note: 'Requests will not be rejected due to small heap size - this is a configuration issue, not a memory constraint.',
+      });
+      (global as any)[lastWarningKey] = now;
+    }
+    // Allow all requests through when heap is misconfigured
+    next();
+    return;
+  }
+
+  // Only reject when heap is actually large (> 1GB) AND usage is high
+  // This protects against real OOM scenarios, not configuration issues
+  const isLargeHeap = heapTotalMB > 1024; // > 1GB
+  const isHighUsage = heapUsedPercent > config.memory.rejectThresholdPercent;
+  
+  if (isLargeHeap && isHighUsage && !isHealthOrMetrics) {
+    logger.warn('Memory usage high on large heap, rejecting request', {
       heapUsedPercent: Math.round(heapUsedPercent),
-      heapUsedMB: Math.round(usage.heapUsed / 1024 / 1024),
+      heapUsedMB: Math.round(heapUsedMB),
+      heapTotalMB: Math.round(heapTotalMB),
+      path: req.path,
     });
 
     res.status(503).json({
@@ -48,6 +85,23 @@ app.use((_req, res, next) => {
       message: 'Server memory usage too high. Please try again later.',
     });
     return;
+  }
+
+  // Log warning for high usage but allow through if heap is small or it's health/metrics
+  if (isHighUsage) {
+    const now = Date.now();
+    const lastWarningKey = `memory_warning_${req.path}_last_logged`;
+    const lastWarning = (global as any)[lastWarningKey] || 0;
+    if (now - lastWarning > 30000) { // Log max once per 30 seconds per path
+      logger.warn('Memory usage high', {
+        heapUsedPercent: Math.round(heapUsedPercent),
+        heapUsedMB: Math.round(heapUsedMB),
+        heapTotalMB: Math.round(heapTotalMB),
+        path: req.path,
+        action: isHealthOrMetrics ? 'allowing (critical endpoint)' : isLargeHeap ? 'rejecting' : 'allowing (small heap)',
+      });
+      (global as any)[lastWarningKey] = now;
+    }
   }
 
   next();
@@ -107,6 +161,27 @@ const apolloServer = new ApolloServer({
 });
 
 async function startServer() {
+  // Check Node.js heap size at startup
+  const usage = process.memoryUsage();
+  const heapTotalMB = usage.heapTotal / 1024 / 1024;
+  const expectedHeapMB = config.memory.maxHeapMB;
+  
+  if (heapTotalMB < 100) {
+    logger.warn('⚠️  Node.js heap size is very small!', {
+      currentHeapMB: Math.round(heapTotalMB),
+      expectedHeapMB,
+      recommendation: `Set NODE_OPTIONS="--max-old-space-size=${expectedHeapMB}" before starting the server`,
+      note: 'The server will still run, but may reject requests due to memory constraints. Health checks will always work.',
+    });
+    console.warn(`\n⚠️  WARNING: Node.js heap size is only ${Math.round(heapTotalMB)}MB (expected ${expectedHeapMB}MB)`);
+    console.warn(`   Set NODE_OPTIONS="--max-old-space-size=${expectedHeapMB}" before starting the server\n`);
+  } else {
+    logger.info('Node.js heap size configured', {
+      heapTotalMB: Math.round(heapTotalMB),
+      expectedHeapMB,
+    });
+  }
+
   await apolloServer.start();
   
   // GraphQL endpoint (public, rate limited by IP)
@@ -142,6 +217,7 @@ async function startServer() {
     logger.info('Server started', {
       port: config.server.port,
       nodeEnv: config.server.nodeEnv,
+      heapTotalMB: Math.round(heapTotalMB),
     });
     console.log(`Server running on port ${config.server.port}`);
     console.log(`GraphQL: http://localhost:${config.server.port}/graphql`);

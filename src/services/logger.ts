@@ -111,10 +111,20 @@ class LoggerService {
       },
     }).info('Memory usage');
 
-    if (heapUsedPercent > config.memory.rejectThresholdPercent) {
+    // Only warn if heap is actually large (> 1GB) and usage is high
+    // Small heaps (< 100MB) are configuration issues, not real memory problems
+    const isLargeHeap = heapTotalMB > 1024;
+    if (isLargeHeap && heapUsedPercent > config.memory.rejectThresholdPercent) {
       this.warn(`Memory usage high: ${heapUsedPercent}%`, {
         heapUsedMB,
         heapTotalMB,
+      });
+    } else if (heapTotalMB < 100 && heapUsedPercent > config.memory.rejectThresholdPercent) {
+      // For small heaps, just log at debug level (not warning)
+      this.debug(`Small heap with high usage (configuration issue): ${heapUsedPercent}%`, {
+        heapUsedMB,
+        heapTotalMB,
+        note: 'This is likely due to NODE_OPTIONS not being set. Requests will not be rejected.',
       });
     }
   }
