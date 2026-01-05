@@ -37,7 +37,18 @@ app.use((_req, res, next) => {
 // Security middleware
 app.use(helmet());
 app.use(cors());
-app.use(compression());
+// Configure compression to skip GraphQL and metrics endpoints to avoid decompression errors
+app.use(compression({
+  filter: (req, res) => {
+    // Skip compression for GraphQL and metrics endpoints to avoid decompression errors on large responses
+    if (req.path === '/graphql' || req.path === '/metrics') {
+      return false;
+    }
+    // Use default compression filter for other routes
+    return compression.filter(req, res);
+  },
+  threshold: 1024, // Only compress responses > 1KB
+}));
 app.use(express.json());
 
 // Metrics endpoint (before other routes)
