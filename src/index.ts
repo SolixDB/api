@@ -2,12 +2,14 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
+import swaggerUi from 'swagger-ui-express';
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
 // @ts-expect-error - no types available for graphql-depth-limit
 import depthLimit from 'graphql-depth-limit';
 import cron from 'node-cron';
 import { config } from './config';
+import { swaggerSpec } from './config/swagger';
 import { rateLimit } from './middleware/rateLimit';
 import { metricsMiddleware } from './middleware/metrics';
 import { graphqlRateLimitPlugin } from './middleware/graphqlRateLimit';
@@ -131,6 +133,18 @@ app.use(express.json());
 // Metrics endpoint (before other routes)
 app.use(metricsMiddleware);
 
+// Swagger UI at root
+app.use('/', swaggerUi.serve);
+app.get('/', swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'SolixDB API Documentation',
+  customfavIcon: '/favicon.ico',
+  swaggerOptions: {
+    persistAuthorization: true,
+    displayRequestDuration: true,
+  },
+}));
+
 // Health check (no auth required)
 app.use('/health', healthRouter);
 
@@ -141,6 +155,32 @@ app.use('/exports', express.static(config.export.dir));
 app.use('/api/v1/query', rateLimit, queryRouter);
 
 // Admin endpoints
+/**
+ * @swagger
+ * /admin/suggest-materialized-views:
+ *   get:
+ *     summary: Get materialized view suggestions
+ *     description: Analyzes query logs to suggest materialized views for optimization (implementation pending)
+ *     tags: [Admin]
+ *     responses:
+ *       200:
+ *         description: Materialized view suggestions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 note:
+ *                   type: string
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.get('/admin/suggest-materialized-views', async (_req, res) => {
   try {
     // This would analyze query logs to suggest materialized views
@@ -247,6 +287,7 @@ async function startServer() {
     console.log(`   Environment: ${config.server.nodeEnv}`);
     console.log(`   Memory: ${Math.round(currentHeapMB)}MB allocated / ${Math.round(maxHeapMB)}MB max limit`);
     console.log(`\n📡 Endpoints:`);
+    console.log(`   API Docs (Swagger): http://localhost:${config.server.port}/`);
     console.log(`   GraphQL: http://localhost:${config.server.port}/graphql`);
     console.log(`   SQL Query: http://localhost:${config.server.port}/api/v1/query`);
     console.log(`   Health: http://localhost:${config.server.port}/health`);

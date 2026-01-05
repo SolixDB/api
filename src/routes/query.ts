@@ -11,13 +11,66 @@ const querySchema = z.object({
 });
 
 /**
- * POST /api/v1/query
- * Execute a read-only SQL query against ClickHouse
- * 
- * Body: {
- *   query: string (SQL SELECT query)
- *   format?: 'json' | 'csv' (default: 'json')
- * }
+ * @swagger
+ * /api/v1/query:
+ *   post:
+ *     summary: Execute a read-only SQL query
+ *     description: |
+ *       Execute a read-only SQL SELECT query against ClickHouse.
+ *       Write operations (INSERT, UPDATE, DELETE, DROP, etc.) are blocked for security.
+ *       Queries are validated and sanitized before execution.
+ *     tags: [Query]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/QueryRequest'
+ *           examples:
+ *             simple:
+ *               summary: Simple query
+ *               value:
+ *                 query: "SELECT * FROM transactions LIMIT 10"
+ *                 format: "json"
+ *             csv:
+ *               summary: Query with CSV format
+ *               value:
+ *                 query: "SELECT protocol_name, COUNT(*) as count FROM transactions GROUP BY protocol_name"
+ *                 format: "csv"
+ *     responses:
+ *       200:
+ *         description: Query executed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/QueryResponse'
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *               description: CSV formatted results
+ *       400:
+ *         description: Invalid query or validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             examples:
+ *               invalidQuery:
+ *                 summary: Write query blocked
+ *                 value:
+ *                   error: "Invalid query"
+ *                   message: "Write operations are not allowed"
+ *               validationError:
+ *                 summary: Validation error
+ *                 value:
+ *                   error: "Validation error"
+ *                   details: [{"path": ["query"], "message": "Required"}]
+ *       500:
+ *         description: Query execution failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
