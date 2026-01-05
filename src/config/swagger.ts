@@ -162,15 +162,27 @@ let swaggerSpec: any;
 try {
   swaggerSpec = swaggerJsdoc(options);
   
-  // Log if spec was generated successfully (only in dev mode to avoid spam)
-  if (process.env.NODE_ENV !== 'production') {
-    const paths = Object.keys(swaggerSpec.paths || {});
-    console.log(`✅ Swagger spec generated successfully with ${paths.length} endpoints`);
-    console.log(`   Source directory: ${srcDir}`);
-    console.log(`   Endpoints found: ${paths.join(', ')}`);
+  // Always log swagger spec generation for debugging
+  const paths = Object.keys(swaggerSpec.paths || {});
+  const pathDetails = paths.map(path => {
+    const methods = Object.keys(swaggerSpec.paths[path] || {});
+    return `${path} [${methods.join(', ').toUpperCase()}]`;
+  });
+  
+  console.log(`✅ Swagger spec generated successfully`);
+  console.log(`   Source directory: ${srcDir}`);
+  console.log(`   Endpoints found: ${paths.length}`);
+  console.log(`   ${pathDetails.join('\n   ')}`);
+  
+  // Validate that we have endpoints
+  if (paths.length === 0) {
+    console.warn('⚠️  WARNING: No endpoints found in Swagger spec!');
+    console.warn(`   Searched in: ${options.apis?.join(', ') || 'unknown'}`);
   }
-} catch (error) {
+} catch (error: any) {
   console.error('❌ Failed to generate Swagger spec:', error);
+  console.error('   Error details:', error.message);
+  console.error('   Stack:', error.stack);
   // Provide a minimal spec so the UI still loads
   swaggerSpec = {
     openapi: '3.0.0',

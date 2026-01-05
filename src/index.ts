@@ -133,6 +133,12 @@ app.use(express.json());
 // Metrics endpoint (before other routes)
 app.use(metricsMiddleware);
 
+// Swagger JSON endpoint for debugging
+app.get('/swagger.json', (_req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.json(swaggerSpec);
+});
+
 // Swagger UI at root
 app.use('/', swaggerUi.serve);
 app.get('/', swaggerUi.setup(swaggerSpec, {
@@ -144,10 +150,11 @@ app.get('/', swaggerUi.setup(swaggerSpec, {
     displayRequestDuration: true,
     tryItOutEnabled: true,
     supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
-    validatorUrl: null, // Disable online validator
-    filter: true, // Enable filter box
-    showExtensions: true,
-    showCommonExtensions: true,
+    validatorUrl: null,
+    filter: true,
+    docExpansion: 'list',
+    defaultModelsExpandDepth: 1,
+    defaultModelExpandDepth: 1,
   },
 }));
 
