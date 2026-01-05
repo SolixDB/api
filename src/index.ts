@@ -233,11 +233,6 @@ async function startServer() {
     }
   });
 
-  // Start memory monitoring (every 30 seconds)
-  setInterval(() => {
-    logger.logMemoryUsage();
-  }, 30000);
-
   app.listen(config.server.port, () => {
     logger.info('🚀 Server started successfully', {
       port: config.server.port,
