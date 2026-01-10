@@ -9,6 +9,7 @@ import { swaggerSpec } from './config/swagger';
 import { apiKeyAuth } from './middleware/apiKeyAuth';
 import { metricsMiddleware } from './middleware/metrics';
 import { rateLimit } from './middleware/rateLimit';
+import { creditCheck } from './middleware/creditCheck';
 import healthRouter from './routes/health';
 import queryRouter from './routes/query';
 import rpcRouter from './routes/rpc';
@@ -81,11 +82,11 @@ app.get('/', swaggerUi.setup(swaggerSpec, {
     showCommonExtensions: true,
     deepLinking: true, // Enable deep linking for direct navigation
     withCredentials: false,
-    requestInterceptor: (request: any) => {
+    requestInterceptor: (request: unknown) => {
       // Ensure requests work properly
       return request;
     },
-    responseInterceptor: (response: any) => {
+    responseInterceptor: (response: unknown) => {
       // Ensure responses are handled properly
       return response;
     },
@@ -95,9 +96,9 @@ app.get('/', swaggerUi.setup(swaggerSpec, {
 // Health check (no auth required)
 app.use('/health', healthRouter);
 
-// API routes (protected with API key auth and rate limiting)
-app.use('/v1/query', apiKeyAuth, rateLimit, queryRouter);
-app.use('/v1/rpc', apiKeyAuth, rateLimit, rpcRouter);
+// API routes (protected with API key auth, credit check, and rate limiting)
+app.use('/v1/query', apiKeyAuth, creditCheck, rateLimit, queryRouter);
+app.use('/v1/rpc', apiKeyAuth, creditCheck, rateLimit, rpcRouter);
 
 // Admin endpoints
 /**

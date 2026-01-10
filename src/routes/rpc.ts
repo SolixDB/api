@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { rpcService } from '../services/rpcService';
+import { creditTracker } from '../services/creditTracker';
 import { logger } from '../services/logger';
 import { z } from 'zod';
 
@@ -240,6 +241,8 @@ router.post('/', async (req: Request, res: Response) => {
         }
 
         default:
+          statusCode = 400;
+          errorMessage = `Method '${method}' is not supported`;
           res.status(400).json({
             jsonrpc: '2.0',
             id,
@@ -249,6 +252,20 @@ router.post('/', async (req: Request, res: Response) => {
               data: `Method '${method}' is not supported. Available methods: getTransaction, getTransactions, getProtocolStats, getProtocolComparison, getInstructionTypes, getProtocolActivity, getTopProtocols, getFailedTransactions, getProtocolPerformance, getProtocols`,
             },
           });
+          // Track failed request (no credits deducted)
+          if (apiKeyInfo) {
+            const responseTime = Date.now() - startTime;
+            await creditTracker.deductCredits(
+              apiKeyInfo.user_id,
+              apiKeyInfo.id,
+              '/v1/rpc',
+              'POST',
+              400,
+              responseTime,
+              0,
+              errorMessage
+            );
+          }
           return;
       }
 
@@ -258,8 +275,24 @@ router.post('/', async (req: Request, res: Response) => {
         id,
         result,
       });
+
+      // Track usage for successful RPC call
+      if (apiKeyInfo) {
+        const responseTime = Date.now() - startTime;
+        await creditTracker.deductCredits(
+          apiKeyInfo.user_id,
+          apiKeyInfo.id,
+          '/v1/rpc',
+          'POST',
+          200,
+          responseTime,
+          1 // 1 credit per RPC call
+        );
+      }
     } catch (methodError: any) {
       // Method execution error
+      statusCode = 500;
+      errorMessage = methodError.message || 'An error occurred while executing the method';
       logger.error('RPC method execution error', methodError, {
         method,
         params: JSON.stringify(params).substring(0, 500),
@@ -271,11 +304,28 @@ router.post('/', async (req: Request, res: Response) => {
         error: {
           code: -32000,
           message: 'Server error',
-          data: methodError.message || 'An error occurred while executing the method',
+          data: errorMessage,
         },
       });
+
+      // Track failed request (no credits deducted)
+      if (apiKeyInfo) {
+        const responseTime = Date.now() - startTime;
+        await creditTracker.deductCredits(
+          apiKeyInfo.user_id,
+          apiKeyInfo.id,
+          '/v1/rpc',
+          'POST',
+          500,
+          responseTime,
+          0,
+          errorMessage
+        );
+      }
     }
   } catch (error: any) {
+    statusCode = 500;
+    errorMessage = error.message || 'An internal error occurred';
     logger.error('RPC endpoint error', error);
     res.status(500).json({
       jsonrpc: '2.0',
@@ -283,9 +333,24 @@ router.post('/', async (req: Request, res: Response) => {
       error: {
         code: -32603,
         message: 'Internal error',
-        data: error.message || 'An internal error occurred',
+        data: errorMessage,
       },
     });
+
+    // Track failed request
+    if (apiKeyInfo) {
+      const responseTime = Date.now() - startTime;
+      await creditTracker.deductCredits(
+        apiKeyInfo.user_id,
+        apiKeyInfo.id,
+        '/v1/rpc',
+        'POST',
+        500,
+        responseTime,
+        0,
+        errorMessage
+      );
+    }
   }
 });
 

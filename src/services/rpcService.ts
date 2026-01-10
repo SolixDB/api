@@ -250,7 +250,24 @@ export class RPCService {
 
       const results = await clickhouseService.query<any>(query, queryParams, 30);
       if (results.length === 0) {
-        throw new Error(`Protocol '${protocolName}' not found`);
+        // Check if protocol exists at all (without time filter)
+        const checkQuery = `
+          SELECT protocol_name as protocolName
+          FROM transactions
+          WHERE protocol_name = {protocolName:String}
+          LIMIT 1
+        `;
+        const exists = await clickhouseService.query<any>(checkQuery, { protocolName }, 10);
+        
+        if (exists.length === 0) {
+          throw new Error(
+            `Protocol '${protocolName}' not found. Use getProtocols() method to see available protocols.`
+          );
+        } else {
+          throw new Error(
+            `Protocol '${protocolName}' found but has no data in the specified time range (${blockTime?.gte ? new Date(blockTime.gte * 1000).toISOString() : 'start'} to ${blockTime?.lte ? new Date(blockTime.lte * 1000).toISOString() : 'end'}).`
+          );
+        }
       }
 
       const result = results[0];
@@ -364,14 +381,14 @@ export class RPCService {
         SELECT 
           instruction_type as instructionType,
           protocol_name as protocolName,
-          count() as count,
+          count() as instructionCount,
           (sum(success) / count()) * 100 as successRate,
           avg(compute_units) as averageComputeUnits,
           avg(fee) as averageFee
         FROM transactions
         ${whereClause}
         GROUP BY instruction_type, protocol_name
-        ORDER BY count DESC
+        ORDER BY instructionCount DESC
         LIMIT ${Math.min(limit, 1000)}
       `;
 
@@ -379,7 +396,7 @@ export class RPCService {
       return results.map((r: any) => ({
         instructionType: r.instructionType,
         protocolName: r.protocolName,
-        count: Number(r.count),
+        count: Number(r.instructionCount),
         successRate: Number(r.successRate),
         averageComputeUnits: Number(r.averageComputeUnits),
         averageFee: Number(r.averageFee),
@@ -477,11 +494,12 @@ export class RPCService {
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
       
-      let orderBy = 'count DESC';
+      // Use full expressions in ORDER BY to avoid ClickHouse alias issues
+      let orderBy = 'count() DESC';
       if (sortBy === 'fees') {
-        orderBy = 'totalFees DESC';
+        orderBy = 'sum(fee) DESC';
       } else if (sortBy === 'successRate') {
-        orderBy = 'successRate DESC';
+        orderBy = '(sum(success) / count()) * 100 DESC';
       }
 
       const query = `
@@ -624,7 +642,24 @@ export class RPCService {
 
       const results = await clickhouseService.query<any>(query, queryParams, 30);
       if (results.length === 0) {
-        throw new Error(`Protocol '${protocolName}' not found`);
+        // Check if protocol exists at all (without time filter)
+        const checkQuery = `
+          SELECT protocol_name as protocolName
+          FROM transactions
+          WHERE protocol_name = {protocolName:String}
+          LIMIT 1
+        `;
+        const exists = await clickhouseService.query<any>(checkQuery, { protocolName }, 10);
+        
+        if (exists.length === 0) {
+          throw new Error(
+            `Protocol '${protocolName}' not found. Use getProtocols() method to see available protocols.`
+          );
+        } else {
+          throw new Error(
+            `Protocol '${protocolName}' found but has no data in the specified time range (${blockTime?.gte ? new Date(blockTime.gte * 1000).toISOString() : 'start'} to ${blockTime?.lte ? new Date(blockTime.lte * 1000).toISOString() : 'end'}).`
+          );
+        }
       }
 
       const result = results[0];

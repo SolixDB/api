@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { clickhouseService } from '../services/clickhouse';
 import { QueryValidator } from '../services/queryValidator';
+import { creditTracker } from '../services/creditTracker';
 import { z } from 'zod';
 
 const router: Router = Router();
@@ -74,6 +75,11 @@ const querySchema = z.object({
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  const apiKeyInfo = req.apiKey;
+  let statusCode = 200;
+  let errorMessage: string | undefined;
+
   try {
     // Validate request body
     const validated = querySchema.parse(req.body);
@@ -82,6 +88,8 @@ router.post('/', async (req: Request, res: Response) => {
     // Validate query is read-only and safe
     const validation = QueryValidator.validate(query);
     if (!validation.valid) {
+      statusCode = 400;
+      errorMessage = validation.error;
       res.status(400).json({
         error: 'Invalid query',
         message: validation.error,
@@ -104,6 +112,19 @@ router.post('/', async (req: Request, res: Response) => {
       if (results.length === 0) {
         res.setHeader('Content-Type', 'text/csv');
         res.send('');
+        // Track usage for successful CSV response
+        if (apiKeyInfo) {
+          const responseTime = Date.now() - startTime;
+          await creditTracker.deductCredits(
+            apiKeyInfo.user_id,
+            apiKeyInfo.id,
+            '/v1/query',
+            'POST',
+            200,
+            responseTime,
+            1
+          );
+        }
         return;
       }
 
@@ -125,6 +146,20 @@ router.post('/', async (req: Request, res: Response) => {
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="query-results.csv"');
       res.send(csvRows.join('\n'));
+      
+      // Track usage for successful CSV response
+      if (apiKeyInfo) {
+        const responseTime = Date.now() - startTime;
+        await creditTracker.deductCredits(
+          apiKeyInfo.user_id,
+          apiKeyInfo.id,
+          '/v1/query',
+          'POST',
+          200,
+          responseTime,
+          1
+        );
+      }
       return;
     }
 
@@ -134,21 +169,51 @@ router.post('/', async (req: Request, res: Response) => {
       count: results.length,
       query: sanitizedQuery,
     });
+
+    // Track usage for successful JSON response
+    if (apiKeyInfo) {
+      const responseTime = Date.now() - startTime;
+      await creditTracker.deductCredits(
+        apiKeyInfo.user_id,
+        apiKeyInfo.id,
+        '/v1/query',
+        'POST',
+        200,
+        responseTime,
+        1
+      );
+    }
   } catch (error: any) {
+    statusCode = error.name === 'ZodError' ? 400 : 500;
+    errorMessage = error.message || 'An error occurred while executing the query';
+
     if (error.name === 'ZodError') {
       res.status(400).json({
         error: 'Validation error',
         details: error.errors,
       });
-      return;
+    } else {
+      console.error('Query execution error:', error);
+      res.status(500).json({
+        error: 'Query execution failed',
+        message: errorMessage,
+      });
     }
 
-    console.error('Query execution error:', error);
-    res.status(500).json({
-      error: 'Query execution failed',
-      message: error.message || 'An error occurred while executing the query',
-    });
-    return;
+    // Track usage for failed requests (log but don't deduct credits)
+    if (apiKeyInfo) {
+      const responseTime = Date.now() - startTime;
+      await creditTracker.deductCredits(
+        apiKeyInfo.user_id,
+        apiKeyInfo.id,
+        '/v1/query',
+        'POST',
+        statusCode,
+        responseTime,
+        0, // No credits deducted for failed requests
+        errorMessage
+      );
+    }
   }
 });
 
