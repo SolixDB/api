@@ -143,6 +143,10 @@ const rpcRequestSchema = z.object({
  *         description: Internal server error
  */
 router.post('/', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  const apiKeyInfo = (req as any).apiKey;
+  let errorMessage: string | undefined;
+
   try {
     // Validate JSON-RPC request
     const validation = rpcRequestSchema.safeParse(req.body);
@@ -241,7 +245,6 @@ router.post('/', async (req: Request, res: Response) => {
         }
 
         default:
-          statusCode = 400;
           errorMessage = `Method '${method}' is not supported`;
           res.status(400).json({
             jsonrpc: '2.0',
@@ -291,7 +294,6 @@ router.post('/', async (req: Request, res: Response) => {
       }
     } catch (methodError: any) {
       // Method execution error
-      statusCode = 500;
       errorMessage = methodError.message || 'An error occurred while executing the method';
       logger.error('RPC method execution error', methodError, {
         method,
@@ -324,7 +326,6 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
   } catch (error: any) {
-    statusCode = 500;
     errorMessage = error.message || 'An internal error occurred';
     logger.error('RPC endpoint error', error);
     res.status(500).json({
