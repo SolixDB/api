@@ -1,18 +1,17 @@
 # SolixDB API
 
-Production-ready TypeScript GraphQL API for querying 929M+ Solana transaction instruction records from ClickHouse. A flexible, composable query language for blockchain data analytics.
+Production-ready TypeScript REST/JSON-RPC API for querying 929M+ Solana transaction instruction records from ClickHouse. A flexible, composable API for blockchain data analytics.
 
 ## Features
 
-- **Flexible GraphQL API** - Composable query primitives, not predefined use cases
-- **Query Complexity Scoring** - Real ClickHouse row estimates for accurate cost calculation
+- **REST & JSON-RPC API** - Flexible query endpoints with JSON-RPC 2.0 support
+- **API Key Authentication** - Secure API key-based authentication with plan-based rate limiting
 - **Smart Caching** - Adaptive caching with real-time blockchain data invalidation
-- **ML Dataset Export** - Background job processing for Parquet, CSV, JSONL exports
 - **Connection Pooling** - Scales to 200 connections for 1000+ concurrent requests
-- **Toggle-able Rate Limiting** - Logarithmic tiers with sliding window tracking
+- **Plan-Based Rate Limiting** - Rate limits based on subscription plan (free/x402/enterprise)
 - **Observability** - Prometheus metrics, structured logging, query analysis
 - **Memory Protection** - Automatic OOM prevention with heap monitoring
-- **Export Management** - Automatic disk space management and cleanup
+- **SQL Query Support** - Direct SQL query execution with automatic LIMIT injection
 
 ## Quick Start
 
@@ -21,6 +20,7 @@ Production-ready TypeScript GraphQL API for querying 929M+ Solana transaction in
 - Node.js 20+
 - ClickHouse database access
 - Redis instance
+- Supabase instance (for API key management)
 
 ### Installation
 
@@ -68,233 +68,441 @@ Environment variables (see `.env.example`):
 - `REDIS_PASSWORD` - Redis password
 - `REDIS_TTL` - Default cache TTL in seconds
 
-### Rate Limiting
-- `RATE_LIMIT_COST_50` - Requests/min for complexity <50 (default: 200)
-- `RATE_LIMIT_COST_100` - Requests/min for complexity <100 (default: 100)
-- `RATE_LIMIT_COST_200` - Requests/min for complexity <200 (default: 50)
-- `RATE_LIMIT_COST_500` - Requests/min for complexity <500 (default: 20)
-- `RATE_LIMIT_COST_1000` - Requests/min for complexity <1000 (default: 10)
+### Supabase (for API Key Management)
+- `SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key
 
-### Export Settings
-- `EXPORT_DIR` - Export directory path (default: /var/solixdb/exports)
-- `EXPORT_EXPIRATION_HOURS` - File expiration time (default: 24)
-- `EXPORT_MIN_FREE_SPACE_GB` - Minimum free space required (default: 20)
-- `EXPORT_MAX_TOTAL_SIZE_GB` - Maximum total export size (default: 100)
-- `JWT_SECRET` - Secret for signed download URLs
+### Rate Limiting (Plan-Based)
+- `RATE_LIMIT_FREE` - Requests/min for free plan (default: 100)
+- `RATE_LIMIT_X402` - Requests/min for x402 plan (default: 500)
+- `RATE_LIMIT_ENTERPRISE` - Requests/min for enterprise plan (default: 2000)
 
 ### Memory
-- `MAX_HEAP_MB` - Maximum heap size in MB (default: 8192)
+- `MAX_HEAP_MB` - Maximum heap size in MB (default: 16384)
 - `MEMORY_REJECT_THRESHOLD_PERCENT` - Reject queries at this heap usage (default: 80)
 
 ## API Endpoints
 
-### GraphQL API
+### Authentication
 
-**Primary Endpoint:** `POST /graphql`
+All API endpoints (except `/health` and `/metrics`) require API key authentication. Include your API key in one of the following ways:
 
-The GraphQL API provides flexible, composable query primitives. Build your own analytics by combining filters, aggregations, and groupings.
+- **Header**: `x-api-key: YOUR_API_KEY`
+- **Query Parameter**: `?api-key=YOUR_API_KEY`
 
-#### Example: Flexible Transactions Query
+### JSON-RPC API
 
-```graphql
-query {
-  transactions(
-    filters: {
-      protocols: ["pump_fun", "pump_amm"]
-      dateRange: { start: "2025-01-01", end: "2025-01-31" }
-      feeRange: { min: 100000 }
-    }
-    groupBy: [PROTOCOL, HOUR]
-    metrics: [COUNT, AVG_FEE, P95_COMPUTE_UNITS]
-    sort: { field: COUNT, direction: DESC }
-    pagination: { first: 100 }
-  ) {
-    edges {
-      node {
-        protocol
-        hour
-        count
-        avgFee
-        p95ComputeUnits
-      }
-      cursor
-    }
-    pageInfo {
-      hasNextPage
-      endCursor
-    }
-  }
-}
+**Primary Endpoint:** `POST /v1/rpc`
+
+The JSON-RPC API provides method-based access to Solana transaction analytics, following the JSON-RPC 2.0 specification. All methods are designed specifically for SolixDB's analytics capabilities.
+
+#### Available Methods
+
+- `getTransaction` - Get a single transaction by signature
+- `getTransactions` - Get transactions with filters (protocol, instruction type, time range, etc.)
+- `getProtocolStats` - Get comprehensive statistics for a protocol
+- `getProtocolComparison` - Compare multiple protocols side by side
+- `getInstructionTypes` - Get instruction types with statistics for protocols
+- `getProtocolActivity` - Get time-series activity data (hourly/daily)
+- `getTopProtocols` - Get top protocols by transaction count, fees, or success rate
+- `getFailedTransactions` - Get failed transactions with error details
+- `getProtocolPerformance` - Get performance metrics (percentiles, averages)
+- `getProtocols` - Get list of all available protocols
+
+#### Example: Get Transaction by Signature
+
+```javascript
+const response = await fetch('https://api.solixdb.xyz/v1/rpc', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': 'YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'getTransaction',
+    params: ['5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4LjF3ZdUi2gEB9M2K3j3gv6q']
+  })
+});
+
+const data = await response.json();
+console.log('Transaction:', data.result);
 ```
 
-#### Example: Query Complexity Check
+#### Example: Get Transactions with Filters
 
-```graphql
-query {
-  queryComplexity(
-    filters: {
-      dateRange: { start: "2025-01-01", end: "2025-01-31" }
-      protocols: ["pump_fun"]
-    }
-    groupBy: [PROTOCOL, HOUR]
-    metrics: [COUNT, AVG_FEE]
-  ) {
-    score
-    estimatedRows
-    baseCost
-    recommendations
-  }
-}
-```
-
-#### Example: ML Dataset Export
-
-```graphql
-mutation {
-  exportDataset(
-    config: {
-      format: PARQUET
+```javascript
+const response = await fetch('https://api.solixdb.xyz/v1/rpc', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': 'YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'getTransactions',
+    params: [{
+      sortOrder: 'desc',
+      limit: 50,
       filters: {
-        protocols: ["pump_fun"]
-        dateRange: { start: "2025-01-01", end: "2025-01-31" }
+        blockTime: {
+          gte: 1735689600,  // Jan 1, 2025
+          lte: 1738368000   // Jan 31, 2025
+        },
+        status: 'succeeded',
+        protocols: ['drift_v2', 'kamino_lending'],
+        instructionTypes: ['Deposit', 'Withdraw']
       }
-      columns: [
-        "protocol_name"
-        "fee"
-        "compute_units"
-        "success"
-        "instruction_type"
-        "hour"
-        "day_of_week"
-        "accounts_count"
-      ]
-      sampling: { strategy: RANDOM, rate: 0.1 }
-      splits: { train: 0.7, test: 0.2, val: 0.1 }
-    }
-  ) {
-    id
-    status
-    progress
-  }
-}
+    }]
+  })
+});
 
-# Check export job status
-query {
-  exportJob(id: "job-id-here") {
-    status
-    progress
-    rowCount
-    fileSize
-    downloadUrl
-  }
-}
+const data = await response.json();
+console.log('Transactions:', data.result.data);
 ```
 
-#### Example: Time Series Query
+#### Example: Get Protocol Statistics
 
-```graphql
-query {
-  timeSeries(
-    filters: {
-      protocols: ["pump_fun"]
-      dateRange: { start: "2025-01-01", end: "2025-01-31" }
-    }
-    bucketBy: DAY
-    metrics: [COUNT, AVG_FEE]
-    groupBy: [PROTOCOL]
-  ) {
-    timestamp
-    value
-    label
-  }
-}
-```
-
-#### Example: Failed Transactions Analysis
-
-```graphql
-query {
-  failedTransactions(
-    filters: {
-      protocols: ["pump_fun"]
-      dateRange: { start: "2025-01-01", end: "2025-01-31" }
-      errorPattern: "insufficient funds"
-    }
-    groupBy: [PROTOCOL, INSTRUCTION_TYPE]
-    metrics: [COUNT]
-    pagination: { first: 100 }
-  ) {
-    edges {
-      node {
-        protocolName
-        instructionType
-        errorMessage
-        count
+```javascript
+const response = await fetch('https://api.solixdb.xyz/v1/rpc', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': 'YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'getProtocolStats',
+    params: [{
+      protocolName: 'drift_v2',
+      blockTime: {
+        gte: 1735689600,
+        lte: 1738368000
       }
-    }
-  }
-}
+    }]
+  })
+});
+
+const data = await response.json();
+console.log('Protocol Stats:', data.result);
+// Returns: totalTransactions, successRate, averageFee, averageComputeUnits, etc.
 ```
 
-### REST API (Legacy)
+#### Example: Compare Multiple Protocols
 
-- `GET /api/v1/transactions` - Get transactions with filters
-- `GET /api/v1/transactions/:signature` - Get transaction by signature
-- `GET /api/v1/analytics/protocols` - Get protocol analytics
-- `GET /api/v1/analytics/time-series` - Get time series data
-- `GET /api/v1/analytics/fees` - Get fee analytics
-- `GET /api/v1/stats` - Get global statistics
-- `POST /api/v1/query` - Execute read-only SQL queries (SELECT only)
+```javascript
+const response = await fetch('https://api.solixdb.xyz/v1/rpc', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': 'YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'getProtocolComparison',
+    params: [{
+      protocols: ['drift_v2', 'kamino_lending', 'meteora_dlmm'],
+      blockTime: {
+        gte: 1735689600,
+        lte: 1738368000
+      }
+    }]
+  })
+});
 
-### Monitoring
+const data = await response.json();
+console.log('Protocol Comparison:', data.result);
+// Returns side-by-side comparison of protocols
+```
 
-- `GET /health` - Health check endpoint
-- `GET /metrics` - Prometheus metrics endpoint
-- `GET /admin/suggest-materialized-views` - Query pattern analysis for optimization
+#### Example: Get Top Protocols
 
-## Documentation
+```javascript
+const response = await fetch('https://api.solixdb.xyz/v1/rpc', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': 'YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 4,
+    method: 'getTopProtocols',
+    params: [{
+      limit: 10,
+      sortBy: 'transactions',  // or 'fees' or 'successRate'
+      blockTime: {
+        gte: 1735689600,
+        lte: 1738368000
+      }
+    }]
+  })
+});
 
-Comprehensive documentation is available in the `docs/` directory:
+const data = await response.json();
+console.log('Top Protocols:', data.result);
+```
 
-- [Getting Started](./docs/getting-started.md)
-- [REST API Reference](./docs/rest-api.md)
-- [GraphQL API Reference](./docs/graphql-api.md)
-- [Rate Limiting](./docs/rate-limiting.md)
-- [Error Handling](./docs/error-handling.md)
-- [Examples](./docs/examples.md)
+#### Example: Get Protocol Activity (Time-Series)
 
-**Live Documentation:** [docs.solixdb.xyz](https://docs.solixdb.xyz) (when deployed)
+```javascript
+const response = await fetch('https://api.solixdb.xyz/v1/rpc', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': 'YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 5,
+    method: 'getProtocolActivity',
+    params: [{
+      protocolName: 'drift_v2',  // optional, omit for all protocols
+      blockTime: {
+        gte: 1735689600,
+        lte: 1738368000
+      },
+      interval: 'hour'  // or 'day'
+    }]
+  })
+});
 
-## Development
+const data = await response.json();
+console.log('Activity Data:', data.result);
+// Returns time-series data points with counts, fees, compute units
+```
+
+#### Example: Get Instruction Types for a Protocol
+
+```javascript
+const response = await fetch('https://api.solixdb.xyz/v1/rpc', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': 'YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 6,
+    method: 'getInstructionTypes',
+    params: [{
+      protocolName: 'kamino_lending',
+      limit: 20
+    }]
+  })
+});
+
+const data = await response.json();
+console.log('Instruction Types:', data.result);
+// Returns instruction types with counts, success rates, averages
+```
+
+#### Example: Get Protocol Performance Metrics
+
+```javascript
+const response = await fetch('https://api.solixdb.xyz/v1/rpc', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': 'YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 7,
+    method: 'getProtocolPerformance',
+    params: [{
+      protocolName: 'drift_v2',
+      blockTime: {
+        gte: 1735689600,
+        lte: 1738368000
+      }
+    }]
+  })
+});
+
+const data = await response.json();
+console.log('Performance Metrics:', data.result);
+// Returns: successRate, p50/p95/p99 compute units, averages
+```
+
+#### Example: Get Failed Transactions
+
+```javascript
+const response = await fetch('https://api.solixdb.xyz/v1/rpc', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': 'YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 8,
+    method: 'getFailedTransactions',
+    params: [{
+      protocolName: 'drift_v2',
+      limit: 100
+    }]
+  })
+});
+
+const data = await response.json();
+console.log('Failed Transactions:', data.result.data);
+// Returns failed transactions with error messages and logs
+```
+
+#### Example: Get Available Protocols
+
+```javascript
+const response = await fetch('https://api.solixdb.xyz/v1/rpc', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': 'YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 9,
+    method: 'getProtocols',
+    params: []
+  })
+});
+
+const data = await response.json();
+console.log('Available Protocols:', data.result);
+// Returns: ['drift_v2', 'kamino_farms', 'kamino_lending', ...]
+```
+
+### SQL Query API
+
+**Endpoint:** `POST /v1/query`
+
+Execute read-only SQL SELECT queries against ClickHouse. Queries automatically get a default LIMIT of 1000 if not specified (max 10,000).
+
+#### Example: Simple Query
+
+```javascript
+const response = await fetch('https://api.solixdb.xyz/v1/query', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': 'YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    query: 'SELECT * FROM transactions WHERE protocol_name = \'pump_fun\'',
+    format: 'json'
+  })
+});
+
+const data = await response.json();
+console.log('Results:', data.data);
+```
+
+**Note:** The query will automatically have `LIMIT 1000` appended if no LIMIT is present. You can specify your own LIMIT (up to 10,000).
+
+### Health Check
+
+**Endpoint:** `GET /health`
+
+Returns the health status of the API and its dependencies.
 
 ```bash
-# Run in development mode with hot reload
-npm run dev
-
-# Build for production
-npm run build
-
-# Lint code
-npm run lint
+curl https://api.solixdb.xyz/health
 ```
 
-## Testing
+Response:
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-01-01T00:00:00.000Z",
+  "version": "1.0.0",
+  "uptime": 12345,
+  "environment": "production",
+  "services": {
+    "clickhouse": "up",
+    "redis": "up"
+  }
+}
+```
 
-Run the comprehensive test suite to verify all endpoints:
+### Metrics (Prometheus)
+
+**Endpoint:** `GET /metrics`
+
+Exposes Prometheus metrics for monitoring.
 
 ```bash
-# Test against local server (default: http://localhost:3000)
-./test-api.sh
-
-# Test against custom URL
-BASE_URL=https://api.solixdb.xyz ./test-api.sh
+curl https://api.solixdb.xyz/metrics
 ```
 
-The test suite covers:
-- Health check endpoint
-- All REST API endpoints
-- GraphQL queries
-- Rate limiting headers
+## Rate Limiting
+
+Rate limiting is based on your subscription plan:
+
+| Plan | Requests per Minute |
+|------|-------------------|
+| Free | 100 |
+| x402 | 500 |
+| Enterprise | 2000 |
+
+Rate limit headers are included in all responses:
+- `X-RateLimit-Limit` - Your plan's rate limit
+- `X-RateLimit-Remaining` - Remaining requests in current window
+- `X-RateLimit-Reset` - When the rate limit window resets
+- `X-RateLimit-Plan` - Your current plan tier
+
+When rate limited, you'll receive a `429 Too Many Requests` response with a `Retry-After` header.
+
+## SQL Query Handling
+
+- **Automatic LIMIT**: If your query doesn't include a LIMIT clause, a default LIMIT of 1000 is automatically added
+- **Maximum LIMIT**: The maximum allowed LIMIT is 10,000 rows
+- **Read-Only**: Only SELECT queries are allowed (no INSERT, UPDATE, DELETE, etc.)
+- **Query Validation**: All queries are validated for safety before execution
+
+## Security
+
+- **Helmet**: Security headers
+- **CORS**: Configurable CORS policies
+- **API Key Authentication**: Required for all API endpoints
+- **Rate Limiting**: Plan-based with sliding window
+- **Input Validation**: Query validation and sanitization
+- **Memory Protection**: Automatic OOM prevention
+
+## Monitoring
+
+### Health Check
+
+```bash
+curl https://api.solixdb.xyz/health
+```
+
+### Prometheus Metrics
+
+```bash
+curl https://api.solixdb.xyz/metrics
+```
+
+Available metrics:
+- `api_request_duration_seconds` - API request latency by endpoint
+- `api_request_total` - Total API requests by endpoint and status
+- `cache_hit_rate` - Cache effectiveness
+- `clickhouse_query_duration_seconds` - Database query performance
+- `active_connections` - Connection pool usage
+- `memory_heap_used_bytes` - Memory consumption
+- `rate_limit_hits_total` - Rate limit enforcement by plan
+
+### Structured Logging
+
+All logs include:
+- Correlation IDs for request tracking
+- Query signatures for analysis
+- Execution times
+- Memory usage metrics
+- Slow query detection (>2s)
 
 ## Project Structure
 
@@ -305,24 +513,18 @@ api/
 │   ├── services/
 │   │   ├── clickhouse.ts    # ClickHouse service with connection pooling
 │   │   ├── redis.ts         # Redis caching service
-│   │   ├── queryComplexity.ts    # Real row estimate complexity scoring
-│   │   ├── queryOptimizer.ts     # Filter ordering optimization
-│   │   ├── graphqlQueryBuilder.ts # GraphQL to ClickHouse SQL builder
-│   │   ├── cacheManager.ts        # Adaptive caching with invalidation
-│   │   ├── exportService.ts       # ML dataset export service
-│   │   ├── jobQueue.ts           # BullMQ job queue
-│   │   ├── metrics.ts             # Prometheus metrics
-│   │   └── logger.ts              # Structured logging (Pino)
-│   ├── routes/              # REST API routes (legacy)
-│   ├── graphql/
-│   │   ├── schema.ts        # GraphQL schema with flexible primitives
-│   │   ├── resolvers.ts     # GraphQL resolvers
-│   │   ├── resolvers/
-│   │   │   └── exportResolvers.ts # Export mutation resolvers
-│   │   └── scalars.ts       # Custom scalars (Date, Signature, BigInt)
+│   │   ├── supabase.ts      # Supabase service for API key validation
+│   │   ├── rpcService.ts    # JSON-RPC method handlers
+│   │   ├── cacheManager.ts  # Adaptive caching with invalidation
+│   │   ├── metrics.ts       # Prometheus metrics
+│   │   └── logger.ts        # Structured logging (Pino)
+│   ├── routes/              # REST API routes
+│   │   ├── health.ts        # Health check endpoint
+│   │   ├── query.ts         # SQL query endpoint
+│   │   └── rpc.ts           # JSON-RPC endpoint
 │   ├── middleware/
-│   │   ├── rateLimit.ts     # Complexity-based rate limiting
-│   │   ├── graphqlRateLimit.ts # GraphQL rate limit plugin
+│   │   ├── apiKeyAuth.ts    # API key authentication middleware
+│   │   ├── rateLimit.ts     # Plan-based rate limiting
 │   │   └── metrics.ts      # Prometheus metrics endpoint
 │   ├── types/               # TypeScript type definitions
 │   └── index.ts             # Application entry point
@@ -332,48 +534,12 @@ api/
 
 ## Key Design Principles
 
-1. **Composable Primitives** - Not predefined use cases, but building blocks
-2. **Real Performance Metrics** - Query complexity based on actual row estimates
+1. **API Key Authentication** - All endpoints require valid API keys
+2. **Plan-Based Limits** - Rate limits based on subscription tier
 3. **Fail Fast** - Clear error messages with actionable recommendations
-4. **Resource Protection** - Memory limits, connection pooling, disk space management
-5. **Observability First** - Comprehensive logging and metrics for optimization
+4. **Resource Protection** - Memory limits, connection pooling
+5. **Observability First** - Comprehensive logging and metrics
 6. **Production Ready** - Error handling, graceful shutdown, health checks
-
-## Query Optimization
-
-### Complexity Scoring
-
-Queries are scored using real ClickHouse row estimates:
-- Base cost = `estimated_rows / 10000`
-- GROUP BY multiplier = `2^dimensions`
-- Aggregation cost = `+10% per aggregation`
-- Queries >5M estimated rows require pagination
-- Queries >1000 complexity are rejected
-
-### Filter Ordering
-
-Filters are applied in optimal order:
-1. `signature =` (bloom filter, super selective)
-2. `program_id IN` (bloom filter, very selective)
-3. `date BETWEEN` (partition pruning)
-4. `slot BETWEEN` (somewhat selective)
-5. `protocol_name IN` (bloom filter, less selective)
-6. Everything else
-
-### Caching Strategy
-
-- **Hot queries** (>5 hits): 1 hour cache
-- **Recent data** (<24h): 5 min cache
-- **Historical data**: 24 hour cache
-- **Aggregations**: 30 min cache
-- **Real-time invalidation**: Checks for new blockchain data every 60s
-
-### Pagination
-
-- Queries returning >10k rows: **FORCE cursor pagination**
-- Cursor format: `(slot, signature)` composite
-- Max 1000 rows per page
-- Aggregations capped at 10k groups
 
 ## Performance
 
@@ -381,192 +547,30 @@ Filters are applied in optimal order:
 - **Concurrency**: Handles 1000+ concurrent requests
 - **Connection Pool**: 20-200 connections (auto-scaling)
 - **Cache Hit Rate**: >70% for historical queries
-- **Memory**: 8GB heap with 80% rejection threshold
-- **Export Processing**: Background jobs with 50k row chunks
-
-## Rate Limiting
-
-Rate limiting uses logarithmic tiers based on query complexity:
-
-| Complexity | Limit (per minute) |
-|------------|-------------------|
-| < 50       | 200               |
-| < 100      | 100               |
-| < 200      | 50                |
-| < 500      | 20                |
-| < 1000     | 10                |
-| ≥ 1000     | Rejected          |
-
-- **Sliding window**: Tracks total cost used in last 60 seconds
-- **Toggle-able**: Set `ENABLE_RATE_LIMIT=false` to disable
-- **Export mutations**: 5 per hour limit
-
-## Security
-
-- **Helmet**: Security headers
-- **CORS**: Configurable CORS policies
-- **Rate Limiting**: Complexity-based with sliding window
-- **Input Validation**: GraphQL schema validation
-- **Query Depth Limiting**: Max 5 levels
-- **Memory Protection**: Automatic OOM prevention
-
-## Monitoring
-
-### Health Check
-
-```bash
-curl http://localhost:3000/health
-```
-
-### Prometheus Metrics
-
-```bash
-curl http://localhost:3000/metrics
-```
-
-Available metrics:
-- `graphql_query_duration_seconds` - Query latency by complexity tier
-- `graphql_query_complexity_score` - Complexity distribution
-- `cache_hit_rate` - Cache effectiveness
-- `clickhouse_query_duration_seconds` - Database query performance
-- `active_connections` - Connection pool usage
-- `memory_heap_used_bytes` - Memory consumption
-- `export_jobs_total` - Export job statistics
-- `rate_limit_hits_total` - Rate limit enforcement
-
-### Structured Logging
-
-All logs include:
-- Correlation IDs for request tracking
-- Query signatures for analysis
-- Complexity scores and execution times
-- Memory usage metrics
-- Slow query detection (>2s)
-
-## ML Dataset Export
-
-Export large datasets for machine learning training:
-
-1. **Create export job** via GraphQL mutation
-2. **Track progress** with `exportJob` query
-3. **Download** via signed URL when complete
-
-Supported formats:
-- **CSV** - ClickHouse native format, gzip compressed
-- **JSONL** - JSON Lines, gzip compressed
-- **Parquet** - ClickHouse native Parquet format (requires ClickHouse 21.12+)
-
-Features:
-- Background processing with BullMQ
-- Automatic disk space management
-- 24-hour file expiration
-- Sampling and train/test/val splits
-- Preprocessing options (normalization, one-hot encoding)
-
-## Example Use Cases
-
-### Use Case 1: Analyze Failed Jupiter Swaps
-
-```graphql
-query {
-  failedTransactions(
-    filters: {
-      protocols: ["jupiter"]
-      dateRange: { start: "2025-01-01", end: "2025-01-31" }
-      accountsCount: { min: 50 }
-    }
-    groupBy: [INSTRUCTION_TYPE]
-    metrics: [COUNT]
-    sort: { field: COUNT, direction: DESC }
-  ) {
-    edges {
-      node {
-        instructionType
-        count
-      }
-    }
-  }
-}
-```
-
-### Use Case 2: Fee Analysis by Day of Week
-
-```graphql
-query {
-  transactions(
-    filters: {
-      protocols: ["pump_fun"]
-      dateRange: { start: "2025-01-01", end: "2025-01-31" }
-    }
-    groupBy: [DAY_OF_WEEK]
-    metrics: [AVG_FEE, P95_FEE, COUNT]
-    sort: { field: AVG_FEE, direction: DESC }
-  ) {
-    edges {
-      node {
-        dayOfWeek
-        avgFee
-        p95Fee
-        count
-      }
-    }
-  }
-}
-```
-
-### Use Case 3: Export Training Dataset
-
-```graphql
-mutation {
-  exportDataset(
-    config: {
-      format: PARQUET
-      filters: {
-        dateRange: { start: "2024-01-01", end: "2024-12-31" }
-        success: true
-      }
-      columns: [
-        "protocol_name"
-        "fee"
-        "compute_units"
-        "instruction_type"
-        "hour"
-        "day_of_week"
-        "accounts_count"
-      ]
-      sampling: { strategy: RANDOM, rate: 0.1 }
-    }
-  ) {
-    id
-    status
-  }
-}
-```
+- **Memory**: 16GB heap with 80% rejection threshold
 
 ## Troubleshooting
 
-### Query Too Complex
+### Invalid API Key
 
-If you get a "Query complexity too high" error:
-1. Check complexity with `queryComplexity` query
-2. Narrow date range
-3. Reduce GROUP BY dimensions
-4. Use `exportDataset` mutation for large datasets
+If you get a 401 Unauthorized error:
+1. Verify your API key is correct
+2. Check that the key is active in your dashboard
+3. Ensure you're sending it via `x-api-key` header or `api-key` query parameter
 
 ### Rate Limit Exceeded
 
-Rate limits are based on query complexity:
-- Check `X-RateLimit-Remaining` header
-- Use `Retry-After` header to know when to retry
-- Consider using exports for bulk data access
+If you get a 429 Too Many Requests error:
+1. Check `X-RateLimit-Remaining` header
+2. Use `Retry-After` header to know when to retry
+3. Consider upgrading your plan for higher limits
 
-### Memory Issues
+### Query Errors
 
-If queries are rejected due to memory:
-- Server monitors heap usage automatically
-- Queries rejected at 80% heap usage
-- Increase `MAX_HEAP_MB` if needed
-- Check `/metrics` for memory statistics
+If queries fail:
+1. Ensure queries are read-only (SELECT only)
+2. Check that LIMIT values don't exceed 10,000
+3. Verify query syntax is valid ClickHouse SQL
 
 ## License
 

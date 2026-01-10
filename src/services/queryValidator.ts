@@ -99,17 +99,7 @@ export class QueryValidator {
       return { valid: false, error: 'Query is too long. Maximum length is 100,000 characters.' };
     }
 
-    // Enforce LIMIT clause for safety (prevent accidental huge result sets)
-    // Allow up to 10,000 rows by default, but require explicit LIMIT
-    const hasLimit = /LIMIT\s+\d+/i.test(query);
-    if (!hasLimit) {
-      return {
-        valid: false,
-        error: 'Query must include a LIMIT clause. Maximum allowed: LIMIT 10000',
-      };
-    }
-
-    // Check LIMIT value is reasonable
+    // Check LIMIT value if present (but don't require it - we'll add default)
     const limitMatch = query.match(/LIMIT\s+(\d+)/i);
     if (limitMatch) {
       const limitValue = parseInt(limitMatch[1], 10);
@@ -151,6 +141,26 @@ export class QueryValidator {
     sanitized = sanitized.replace(/\s+/g, ' ').trim();
     
     return sanitized;
+  }
+
+  /**
+   * Adds default LIMIT clause if not present
+   * Default limit is 1000, max is 10000
+   */
+  static addDefaultLimit(query: string, defaultLimit: number = 1000): string {
+    const normalizedQuery = query.trim();
+    
+    // Check if LIMIT already exists
+    const hasLimit = /LIMIT\s+\d+/i.test(normalizedQuery);
+    if (hasLimit) {
+      return query; // Return original if LIMIT already present
+    }
+
+    // Remove trailing semicolon if present
+    const queryWithoutSemicolon = normalizedQuery.replace(/;?\s*$/, '');
+    
+    // Add LIMIT clause
+    return `${queryWithoutSemicolon} LIMIT ${defaultLimit}`;
   }
 }
 

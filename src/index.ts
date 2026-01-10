@@ -1,28 +1,20 @@
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
 import compression from 'compression';
+import cors from 'cors';
+import express from 'express';
+import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
-import { ApolloServer } from '@apollo/server';
-import { expressMiddleware } from '@apollo/server/express4';
-// @ts-expect-error - no types available for graphql-depth-limit
-import depthLimit from 'graphql-depth-limit';
-import cron from 'node-cron';
+import { v4 as uuidv4 } from 'uuid';
 import { config } from './config';
 import { swaggerSpec } from './config/swagger';
-import { rateLimit } from './middleware/rateLimit';
+import { apiKeyAuth } from './middleware/apiKeyAuth';
 import { metricsMiddleware } from './middleware/metrics';
-import { graphqlRateLimitPlugin } from './middleware/graphqlRateLimit';
+import { rateLimit } from './middleware/rateLimit';
 import healthRouter from './routes/health';
 import queryRouter from './routes/query';
-import { typeDefs } from './graphql/schema';
-import { resolvers } from './graphql/resolvers';
-import { logger } from './services/logger';
-import { exportService } from './services/exportService';
+import rpcRouter from './routes/rpc';
 import { cacheManager } from './services/cacheManager';
 import { clickhouseService } from './services/clickhouse';
-import { jobQueueService } from './services/jobQueue';
-import { v4 as uuidv4 } from 'uuid';
+import { logger } from './services/logger';
 
 const app = express();
 
@@ -37,11 +29,11 @@ app.use((_req, res, next) => {
 // Security middleware
 app.use(helmet());
 app.use(cors());
-// Configure compression to skip GraphQL and metrics endpoints to avoid decompression errors
+// Configure compression to skip metrics endpoint to avoid decompression errors
 app.use(compression({
   filter: (req, res) => {
-    // Skip compression for GraphQL and metrics endpoints to avoid decompression errors on large responses
-    if (req.path === '/graphql' || req.path === '/metrics') {
+    // Skip compression for metrics endpoint to avoid decompression errors on large responses
+    if (req.path === '/metrics') {
       return false;
     }
     // Use default compression filter for other routes
@@ -103,11 +95,9 @@ app.get('/', swaggerUi.setup(swaggerSpec, {
 // Health check (no auth required)
 app.use('/health', healthRouter);
 
-// Export file serving
-app.use('/exports', express.static(config.export.dir));
-
-// API routes (public, rate limited by IP)
-app.use('/api/v1/query', rateLimit, queryRouter);
+// API routes (protected with API key auth and rate limiting)
+app.use('/v1/query', apiKeyAuth, rateLimit, queryRouter);
+app.use('/v1/rpc', apiKeyAuth, rateLimit, rpcRouter);
 
 // Admin endpoints
 /**
@@ -151,114 +141,7 @@ app.get('/admin/suggest-materialized-views', async (_req, res) => {
   }
 });
 
-// GraphQL endpoint
-const apolloServer = new ApolloServer({
-  typeDefs,
-  resolvers,
-  plugins: [graphqlRateLimitPlugin],
-  validationRules: [depthLimit(config.graphql.maxDepth)],
-  formatError: (error) => {
-    logger.error('GraphQL error', error as Error, {
-      code: error.extensions?.code,
-    });
-    return {
-      message: error.message,
-      extensions: {
-        code: error.extensions?.code,
-        ...error.extensions,
-      },
-    };
-  },
-});
-
 async function startServer() {
-  await apolloServer.start();
-  
-  // GraphQL endpoint (public, rate limited by IP)
-  /**
-   * @swagger
-   * /graphql:
-   *   post:
-   *     operationId: executeGraphQL
-   *     summary: Execute a GraphQL query
-   *     description: |
-   *       Execute GraphQL queries and mutations against the SolixDB GraphQL API.
-   *       Use the interactive GraphQL playground at /graphql for testing queries.
-   *       This endpoint accepts standard GraphQL POST requests with query, variables, and operationName.
-   *     tags: [GraphQL]
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             type: object
-   *             required:
-   *               - query
-   *             properties:
-   *               query:
-   *                 type: string
-   *                 description: GraphQL query string
-   *                 example: "query { transactions(limit: 10) { signature timestamp } }"
-   *               variables:
-   *                 type: object
-   *                 description: GraphQL variables (optional)
-   *                 additionalProperties: true
-   *               operationName:
-   *                 type: string
-   *                 description: Name of the operation to execute (for multi-operation queries)
-   *     responses:
-   *       200:
-   *         description: GraphQL query executed successfully
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 data:
-   *                   type: object
-   *                   description: GraphQL response data
-   *                   additionalProperties: true
-   *                 errors:
-   *                   type: array
-   *                   items:
-   *                     type: object
-   *                   description: GraphQL errors (if any)
-   *       400:
-   *         description: Invalid GraphQL query
-   *         content:
-   *           application/json:
-   *             schema:
-   *               $ref: '#/components/schemas/Error'
-   *       500:
-   *         description: GraphQL execution error
-   *         content:
-   *           application/json:
-   *             schema:
-   *               $ref: '#/components/schemas/Error'
-   */
-  app.use(
-    '/graphql',
-    rateLimit,
-    expressMiddleware(apolloServer, {
-      context: async ({ req }) => {
-        return {
-          correlationId: req.headers['x-correlation-id'] || uuidv4(),
-        };
-      },
-    })
-  );
-
-  // Start export cleanup cron job (runs every hour)
-  cron.schedule('0 * * * *', async () => {
-    logger.info('Running export cleanup cron job');
-    try {
-      const deletedCount = await exportService.cleanupExpiredExports();
-      logger.info('Export cleanup completed', { deletedCount });
-    } catch (error) {
-      logger.error('Export cleanup cron error', error as Error);
-    }
-  });
-
   app.listen(config.server.port, () => {
     logger.info('🚀 Server started successfully', {
       port: config.server.port,
@@ -267,24 +150,21 @@ async function startServer() {
     console.log(`\n🚀 Server running on port ${config.server.port}`);
     console.log(`   Environment: ${config.server.nodeEnv}`);
     console.log(`\n📡 Endpoints:`);
-    console.log(`   API Docs (Swagger): http://localhost:${config.server.port}/`);
-    console.log(`   GraphQL: http://localhost:${config.server.port}/graphql`);
-    console.log(`   SQL Query: http://localhost:${config.server.port}/api/v1/query`);
-    console.log(`   Health: http://localhost:${config.server.port}/health`);
-    console.log(`   Metrics: http://localhost:${config.server.port}/metrics\n`);
+    console.log(`   API Docs (Swagger): https://api.solixdb.xyz/`);
+    console.log(`   SQL Query: https://api.solixdb.xyz/v1/query`);
+    console.log(`   Health: https://api.solixdb.xyz/health`);
+    console.log(`   Metrics: https://api.solixdb.xyz/metrics\n`);
   });
 }
 
 // Graceful shutdown
 async function shutdown() {
   logger.info('Shutting down server...');
-  
+
   try {
-    await apolloServer.stop();
     await clickhouseService.close();
     await cacheManager.cleanup();
-    await jobQueueService.close();
-    
+
     logger.info('Server shutdown complete');
     process.exit(0);
   } catch (error) {

@@ -12,7 +12,7 @@ const querySchema = z.object({
 
 /**
  * @swagger
- * /api/v1/query:
+ * /v1/query:
  *   post:
  *     operationId: executeQuery
  *     summary: Execute a read-only SQL query
@@ -90,7 +90,10 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Sanitize query
-    const sanitizedQuery = QueryValidator.sanitize(query);
+    let sanitizedQuery = QueryValidator.sanitize(query);
+
+    // Add default LIMIT if not present
+    sanitizedQuery = QueryValidator.addDefaultLimit(sanitizedQuery, 1000);
 
     // Execute query with timeout (30 seconds max)
     const results = await clickhouseService.query(sanitizedQuery, {}, 30);

@@ -4,7 +4,8 @@ import { config } from '../config';
 import { metrics } from '../services/metrics';
 
 /**
- * Sliding window rate limiting with complexity-based tiers
+ * Plan-based rate limiting using API key plan tier
+ * Separate from system metrics (RAM, etc.)
  */
 export const rateLimit = async (
   req: Request,
@@ -17,25 +18,31 @@ export const rateLimit = async (
     return;
   }
 
-  // Rate limit by IP address
-  const identifier = req.ip || req.socket.remoteAddress || 'unknown';
+  // Get API key info from request (set by apiKeyAuth middleware)
+  const apiKeyInfo = req.apiKey;
+  if (!apiKeyInfo) {
+    // If no API key, this shouldn't happen if middleware is applied correctly
+    // But we'll allow it to pass through for now
+    next();
+    return;
+  }
+
+  // Get plan-based rate limit
+  const plan = apiKeyInfo.plan || 'free';
+  const limit = getRateLimitForPlan(plan);
   const windowMs = 60000; // 60 seconds sliding window
 
-  // Get query complexity from request (set by GraphQL middleware)
-  const complexity = (req as any).queryComplexity || 0;
-  const tier = getRateLimitTier(complexity);
-  const limit = getRateLimitForTier(tier);
+  // Use API key ID as identifier (not IP address)
+  const identifier = `api_key:${apiKeyInfo.id}`;
+  const rateLimitKey = `rate_limit:${identifier}`;
 
-  // Sliding window: track total cost used in last 60 seconds
-  const costKey = `rate_limit_cost:${identifier}`;
-
-  // Get current cost usage
-  const currentCost = await redisService.get<number>(costKey) || 0;
+  // Get current request count in sliding window
+  const currentCount = await redisService.get<number>(rateLimitKey) || 0;
 
   // Check if limit exceeded
-  if (currentCost + complexity > limit) {
+  if (currentCount >= limit) {
     const retryAfter = Math.ceil(windowMs / 1000);
-    metrics.rateLimitHitsTotal.inc({ tier });
+    metrics.rateLimitHitsTotal.inc({ plan });
 
     res.setHeader('X-RateLimit-Limit', limit.toString());
     res.setHeader('X-RateLimit-Remaining', '0');
@@ -44,52 +51,36 @@ export const rateLimit = async (
 
     res.status(429).json({
       error: 'Too Many Requests',
-      message: `Rate limit exceeded. Complexity: ${complexity}, Limit: ${limit}, Used: ${currentCost}. Retry after ${retryAfter} seconds.`,
-      extensions: {
-        code: 'RATE_LIMIT_EXCEEDED',
-        complexity,
-        limit,
-        used: currentCost,
-        tier,
-        retryAfter,
-      },
+      message: `Rate limit exceeded for plan '${plan}'. Limit: ${limit} requests/minute, Used: ${currentCount}. Retry after ${retryAfter} seconds.`,
+      plan,
+      limit,
+      used: currentCount,
+      retryAfter,
     });
     return;
   }
 
-  // Increment cost usage
-  await redisService.set(costKey, currentCost + complexity, Math.ceil(windowMs / 1000));
+  // Increment request count
+  await redisService.set(rateLimitKey, currentCount + 1, Math.ceil(windowMs / 1000));
 
   res.setHeader('X-RateLimit-Limit', limit.toString());
-  res.setHeader('X-RateLimit-Remaining', Math.max(0, limit - (currentCost + complexity)).toString());
+  res.setHeader('X-RateLimit-Remaining', Math.max(0, limit - (currentCount + 1)).toString());
   res.setHeader('X-RateLimit-Reset', new Date(Date.now() + windowMs).toISOString());
+  res.setHeader('X-RateLimit-Plan', plan);
 
   next();
 };
 
-function getRateLimitTier(complexity: number): string {
-  if (complexity < 50) return 'cost50';
-  if (complexity < 100) return 'cost100';
-  if (complexity < 200) return 'cost200';
-  if (complexity < 500) return 'cost500';
-  if (complexity < 1000) return 'cost1000';
-  return 'too_complex';
-}
-
-function getRateLimitForTier(tier: string): number {
-  switch (tier) {
-    case 'cost50':
-      return config.api.rateLimitTiers.cost50;
-    case 'cost100':
-      return config.api.rateLimitTiers.cost100;
-    case 'cost200':
-      return config.api.rateLimitTiers.cost200;
-    case 'cost500':
-      return config.api.rateLimitTiers.cost500;
-    case 'cost1000':
-      return config.api.rateLimitTiers.cost1000;
+function getRateLimitForPlan(plan: string): number {
+  switch (plan) {
+    case 'free':
+      return config.api.rateLimitTiers.free;
+    case 'x402':
+      return config.api.rateLimitTiers.x402;
+    case 'enterprise':
+      return config.api.rateLimitTiers.enterprise;
     default:
-      return 0; // Reject
+      return config.api.rateLimitTiers.free; // Default to free tier
   }
 }
 

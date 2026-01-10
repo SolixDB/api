@@ -722,7 +722,7 @@ async function runTests() {
   });
 
   await runner.test('Direct SQL query endpoint - write query blocked', async () => {
-    const response = await fetch(`${BASE_URL}/api/v1/query`, {
+    const response = await fetch(`${BASE_URL}/v1/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -737,7 +737,7 @@ async function runTests() {
   });
 
   await runner.test('Direct SQL query endpoint - SELECT allowed', async () => {
-    const response = await fetch(`${BASE_URL}/api/v1/query`, {
+    const response = await fetch(`${BASE_URL}/v1/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

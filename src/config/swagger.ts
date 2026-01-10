@@ -30,7 +30,7 @@ const options: swaggerJsdoc.Options = {
     info: {
       title: 'SolixDB API',
       version: '1.0.0',
-      description: 'Scaled API/GraphQL Service for Solana Transaction Data',
+      description: 'REST/JSON-RPC API Service for Solana Transaction Data',
       contact: {
         name: 'SolixDB',
       },
@@ -55,12 +55,12 @@ const options: swaggerJsdoc.Options = {
         description: 'SQL query execution endpoints',
       },
       {
-        name: 'Admin',
-        description: 'Administrative endpoints',
+        name: 'RPC',
+        description: 'JSON-RPC 2.0 method endpoints',
       },
       {
-        name: 'GraphQL',
-        description: 'GraphQL API endpoint (see /graphql for interactive playground)',
+        name: 'Admin',
+        description: 'Administrative endpoints',
       },
     ],
     components: {
@@ -94,6 +94,18 @@ const options: swaggerJsdoc.Options = {
               type: 'string',
               format: 'date-time',
               description: 'Timestamp of health check',
+            },
+            version: {
+              type: 'string',
+              description: 'API version',
+            },
+            uptime: {
+              type: 'integer',
+              description: 'Server uptime in seconds',
+            },
+            environment: {
+              type: 'string',
+              description: 'Environment (development/production)',
             },
             services: {
               type: 'object',

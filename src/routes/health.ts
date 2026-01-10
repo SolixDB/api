@@ -1,8 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { clickhouseService } from '../services/clickhouse';
 import { redisService } from '../services/redis';
+import { config } from '../config';
+import packageJson from '../../package.json';
 
 const router: Router = Router();
+
+// Track server start time for uptime calculation
+const serverStartTime = Date.now();
 
 /**
  * @swagger
@@ -46,10 +51,14 @@ router.get('/', async (_req: Request, res: Response) => {
 
   const healthy = clickhouseHealthy && redisHealthy;
   const status = healthy ? 200 : 503;
+  const uptime = Math.floor((Date.now() - serverStartTime) / 1000); // Uptime in seconds
 
   res.status(status).json({
     status: healthy ? 'healthy' : 'unhealthy',
     timestamp: new Date().toISOString(),
+    version: packageJson.version,
+    uptime,
+    environment: config.server.nodeEnv,
     services: {
       clickhouse: clickhouseHealthy ? 'up' : 'down',
       redis: redisHealthy ? 'up' : 'down',
