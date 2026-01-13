@@ -284,7 +284,7 @@ export class CreditTracker {
             });
           }
         } else {
-          // Record doesn't exist - create it with used_credits = 1
+          // Record doesn't exist for this month - create it with used_credits = 1
           const totalCredits = this.getPlanCredits(user.plan as 'free' | 'x402' | 'enterprise');
           
           logger.info('🆕 Creating new monthly credits record', {
@@ -308,14 +308,110 @@ export class CreditTracker {
             .single();
 
           if (insertError) {
-            logger.error('❌ Error creating monthly credits record', insertError as Error, {
-              userId,
-              monthStr,
-              plan: user.plan,
-              totalCredits,
-              errorCode: (insertError as any).code,
-              errorMessage: (insertError as any).message,
-            });
+            // If duplicate key error, there's already a record (maybe for different month or unique constraint on user_id)
+            if ((insertError as any).code === '23505') {
+              logger.info('⚠️ Duplicate key error - record exists, fetching and updating', {
+                userId,
+                monthStr,
+                errorCode: (insertError as any).code,
+              });
+
+              // Fetch existing record (try current month first, then any record for user)
+              let existingRecord = null;
+              
+              // First try to get record for current month
+              const { data: monthRecord } = await client
+                .from('monthly_credits')
+                .select('id, used_credits, total_credits, month')
+                .eq('user_id', userId)
+                .eq('month', monthStr)
+                .single();
+
+              if (monthRecord) {
+                existingRecord = monthRecord;
+                logger.info('📊 Found record for current month', {
+                  userId,
+                  monthStr,
+                  recordId: existingRecord.id,
+                  usedCredits: existingRecord.used_credits,
+                });
+              } else {
+                // If no record for current month, get any record for this user
+                const { data: anyRecord } = await client
+                  .from('monthly_credits')
+                  .select('id, used_credits, total_credits, month')
+                  .eq('user_id', userId)
+                  .limit(1)
+                  .single();
+
+                if (anyRecord) {
+                  existingRecord = anyRecord;
+                  logger.info('📊 Found existing record for user (different month)', {
+                    userId,
+                    recordMonth: anyRecord.month,
+                    currentMonth: monthStr,
+                    recordId: existingRecord.id,
+                    usedCredits: existingRecord.used_credits,
+                  });
+                }
+              }
+
+              if (existingRecord) {
+                // Update the existing record
+                const oldUsedCredits = existingRecord.used_credits || 0;
+                const newUsedCredits = oldUsedCredits + 1;
+
+                logger.info('📈 Updating existing record after duplicate key error', {
+                  userId,
+                  recordId: existingRecord.id,
+                  recordMonth: existingRecord.month,
+                  currentMonth: monthStr,
+                  oldUsedCredits,
+                  newUsedCredits,
+                });
+
+                const { data: updatedData, error: updateError } = await client
+                  .from('monthly_credits')
+                  .update({
+                    used_credits: newUsedCredits,
+                    month: monthStr, // Update month to current month
+                  })
+                  .eq('id', existingRecord.id)
+                  .select('id, used_credits, total_credits, month')
+                  .single();
+
+                if (updateError) {
+                  logger.error('❌ Error updating record after duplicate key', updateError as Error, {
+                    userId,
+                    recordId: existingRecord.id,
+                    errorCode: (updateError as any).code,
+                  });
+                } else {
+                  logger.info('✅ Successfully updated record after duplicate key error', {
+                    userId,
+                    recordId: updatedData?.id,
+                    month: updatedData?.month,
+                    usedCredits: updatedData?.used_credits,
+                    totalCredits: updatedData?.total_credits,
+                  });
+                }
+              } else {
+                logger.error('❌ Duplicate key error but no existing record found', new Error('No existing record found'), {
+                  userId,
+                  monthStr,
+                  errorCode: (insertError as any).code,
+                });
+              }
+            } else {
+              logger.error('❌ Error creating monthly credits record', insertError as Error, {
+                userId,
+                monthStr,
+                plan: user.plan,
+                totalCredits,
+                errorCode: (insertError as any).code,
+                errorMessage: (insertError as any).message,
+              });
+            }
           } else {
             logger.info('✅ Successfully created monthly credits record', {
               userId,
