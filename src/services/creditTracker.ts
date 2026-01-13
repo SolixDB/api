@@ -122,14 +122,27 @@ export class CreditTracker {
     creditsUsed: number = 1,
     errorMessage?: string
   ): void {
+    logger.info('🔵 deductCredits called', {
+      userId,
+      apiKeyId,
+      endpoint,
+      method,
+      statusCode,
+      responseTimeMs,
+      creditsUsed,
+      errorMessage,
+    });
+
     // Fire and forget - don't await, process in background
     this.deductCreditsAsync(userId, apiKeyId, endpoint, method, statusCode, responseTimeMs, creditsUsed, errorMessage)
       .catch((error) => {
         // Log errors but don't throw - credit tracking shouldn't break the API
-        logger.error('Error in background credit deduction', error as Error, {
+        logger.error('❌ Error in background credit deduction', error as Error, {
           userId,
           apiKeyId,
           endpoint,
+          statusCode,
+          creditsUsed,
         });
       });
   }
@@ -148,47 +161,141 @@ export class CreditTracker {
     creditsUsed: number = 1,
     errorMessage?: string
   ): Promise<void> {
+    const startTime = Date.now();
+    logger.info('🟢 deductCreditsAsync started', {
+      userId,
+      apiKeyId,
+      endpoint,
+      method,
+      statusCode,
+      responseTimeMs,
+      creditsUsed,
+      errorMessage,
+    });
+
     try {
       const client = this.getClient();
       const monthStr = this.getCurrentMonth();
+      logger.info('📅 Current month string', { monthStr });
 
       // Only increment credits for successful requests
       if (statusCode >= 200 && statusCode < 300 && creditsUsed > 0) {
+        logger.info('✅ Processing credit deduction (successful request)', {
+          userId,
+          statusCode,
+          creditsUsed,
+        });
+
         // Get user to get their plan
-        const { data: user } = await client
+        logger.info('👤 Fetching user', { userId });
+        const { data: user, error: userError } = await client
           .from('users')
           .select('plan')
           .eq('id', userId)
           .single();
 
+        if (userError) {
+          logger.error('❌ Error fetching user', userError as Error, {
+            userId,
+            monthStr,
+            errorCode: (userError as any).code,
+            errorMessage: (userError as any).message,
+          });
+          return;
+        }
+
         if (!user) {
-          logger.error('User not found when updating credits', new Error('User not found'), {
+          logger.error('❌ User not found when updating credits', new Error('User not found'), {
             userId,
             monthStr,
           });
           return;
         }
 
+        logger.info('👤 User found', {
+          userId,
+          plan: user.plan,
+        });
+
         // Get monthly credits record
-        const { data: monthlyCredits } = await client
+        logger.info('💰 Fetching monthly credits', {
+          userId,
+          monthStr,
+        });
+        const { data: monthlyCredits, error: creditsError } = await client
           .from('monthly_credits')
-          .select('used_credits, id')
+          .select('used_credits, id, total_credits')
           .eq('user_id', userId)
           .eq('month', monthStr)
           .single();
 
+        if (creditsError) {
+          const errorCode = (creditsError as any).code;
+          logger.info('📊 Monthly credits query result', {
+            userId,
+            monthStr,
+            errorCode,
+            isNotFound: errorCode === 'PGRST116',
+            errorMessage: (creditsError as any).message,
+          });
+        }
+
         if (monthlyCredits) {
           // Record exists - increment used_credits by 1
-          await client
+          const oldUsedCredits = monthlyCredits.used_credits || 0;
+          const newUsedCredits = oldUsedCredits + 1;
+
+          logger.info('📈 Updating existing monthly credits record', {
+            userId,
+            monthStr,
+            recordId: monthlyCredits.id,
+            oldUsedCredits,
+            newUsedCredits,
+            totalCredits: monthlyCredits.total_credits,
+          });
+
+          const { data: updatedData, error: updateError } = await client
             .from('monthly_credits')
             .update({
-              used_credits: (monthlyCredits.used_credits || 0) + 1,
+              used_credits: newUsedCredits,
             })
-            .eq('id', monthlyCredits.id);
+            .eq('id', monthlyCredits.id)
+            .select('used_credits, total_credits')
+            .single();
+
+          if (updateError) {
+            logger.error('❌ Error updating monthly credits', updateError as Error, {
+              userId,
+              monthStr,
+              recordId: monthlyCredits.id,
+              oldUsedCredits,
+              newUsedCredits,
+              errorCode: (updateError as any).code,
+              errorMessage: (updateError as any).message,
+            });
+          } else {
+            logger.info('✅ Successfully updated monthly credits', {
+              userId,
+              monthStr,
+              recordId: monthlyCredits.id,
+              oldUsedCredits,
+              newUsedCredits: updatedData?.used_credits,
+              totalCredits: updatedData?.total_credits,
+            });
+          }
         } else {
           // Record doesn't exist - create it with used_credits = 1
           const totalCredits = this.getPlanCredits(user.plan as 'free' | 'x402' | 'enterprise');
-          await client
+          
+          logger.info('🆕 Creating new monthly credits record', {
+            userId,
+            monthStr,
+            plan: user.plan,
+            totalCredits,
+            initialUsedCredits: 1,
+          });
+
+          const { data: insertedData, error: insertError } = await client
             .from('monthly_credits')
             .insert({
               user_id: userId,
@@ -196,11 +303,49 @@ export class CreditTracker {
               plan: user.plan,
               total_credits: totalCredits,
               used_credits: 1,
+            })
+            .select('id, used_credits, total_credits')
+            .single();
+
+          if (insertError) {
+            logger.error('❌ Error creating monthly credits record', insertError as Error, {
+              userId,
+              monthStr,
+              plan: user.plan,
+              totalCredits,
+              errorCode: (insertError as any).code,
+              errorMessage: (insertError as any).message,
             });
+          } else {
+            logger.info('✅ Successfully created monthly credits record', {
+              userId,
+              monthStr,
+              recordId: insertedData?.id,
+              usedCredits: insertedData?.used_credits,
+              totalCredits: insertedData?.total_credits,
+            });
+          }
         }
+      } else {
+        logger.info('⏭️ Skipping credit update', {
+          userId,
+          statusCode,
+          creditsUsed,
+          reason: statusCode < 200 || statusCode >= 300 ? 'unsuccessful_status' : 'no_credits_to_deduct',
+        });
       }
 
       // Log usage (non-blocking, fire and forget)
+      logger.info('📝 Logging usage', {
+        userId,
+        apiKeyId,
+        endpoint,
+        method,
+        statusCode,
+        responseTimeMs,
+        creditsUsed,
+      });
+
       Promise.resolve(
         client
           .from('usage_logs')
@@ -214,26 +359,59 @@ export class CreditTracker {
             credits_used: creditsUsed,
             error_message: errorMessage,
           })
-      ).catch((logError: any) => {
-        logger.error('Error logging usage', logError as Error, {
-          userId,
-          apiKeyId,
-          endpoint,
+      )
+        .then(() => {
+          logger.info('✅ Usage logged successfully', {
+            userId,
+            apiKeyId,
+            endpoint,
+          });
+        })
+        .catch((logError: any) => {
+          logger.error('❌ Error logging usage', logError as Error, {
+            userId,
+            apiKeyId,
+            endpoint,
+            errorCode: (logError as any).code,
+            errorMessage: (logError as any).message,
+          });
         });
-      });
 
       // Update API key last_used_at (non-blocking)
+      logger.info('🔑 Updating API key last_used_at', { apiKeyId });
       Promise.resolve(
         client
           .from('api_keys')
           .update({ last_used_at: new Date().toISOString() })
           .eq('id', apiKeyId)
-      ).catch(() => {});
-    } catch (error) {
-      logger.error('Error deducting credits', error as Error, {
+      )
+        .then(() => {
+          logger.info('✅ API key last_used_at updated', { apiKeyId });
+        })
+        .catch((updateError: any) => {
+          logger.error('❌ Error updating API key last_used_at', updateError as Error, {
+            apiKeyId,
+            errorCode: (updateError as any).code,
+          });
+        });
+
+      const duration = Date.now() - startTime;
+      logger.info('🟢 deductCreditsAsync completed', {
         userId,
         apiKeyId,
         endpoint,
+        durationMs: duration,
+      });
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logger.error('❌ Error deducting credits', error as Error, {
+        userId,
+        apiKeyId,
+        endpoint,
+        statusCode,
+        creditsUsed,
+        durationMs: duration,
+        errorStack: (error as Error).stack,
       });
       // Don't throw - credit deduction failure shouldn't break the API response
     }
