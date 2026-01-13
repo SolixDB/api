@@ -1,4 +1,4 @@
-import cron from 'node-cron';
+import * as cron from 'node-cron';
 import { creditTracker } from './creditTracker';
 import { logger } from './logger';
 
@@ -25,7 +25,6 @@ export class CronScheduler {
         logger.error('Monthly credit reset cron job failed', error as Error);
       }
     }, {
-      scheduled: true,
       timezone: 'UTC',
     });
 
