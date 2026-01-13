@@ -16,6 +16,7 @@ import rpcRouter from './routes/rpc';
 import { cacheManager } from './services/cacheManager';
 import { clickhouseService } from './services/clickhouse';
 import { logger } from './services/logger';
+import { cronScheduler } from './services/cronScheduler';
 
 const app = express();
 
@@ -143,6 +144,9 @@ app.get('/admin/suggest-materialized-views', async (_req, res) => {
 });
 
 async function startServer() {
+  // Start cron scheduler for scheduled tasks
+  cronScheduler.start();
+
   app.listen(config.server.port, () => {
     logger.info('🚀 Server started successfully', {
       port: config.server.port,
@@ -163,6 +167,7 @@ async function shutdown() {
   logger.info('Shutting down server...');
 
   try {
+    cronScheduler.stop();
     await clickhouseService.close();
     await cacheManager.cleanup();
 

@@ -8,14 +8,7 @@ export interface CreditInfo {
   plan: 'free' | 'x402' | 'enterprise';
 }
 
-/**
- * Credit tracking service
- * Handles credit checking, deduction, and usage logging
- */
 export class CreditTracker {
-  /**
-   * Get credit limits for a plan
-   */
   private getPlanCredits(plan: 'free' | 'x402' | 'enterprise'): number {
     switch (plan) {
       case 'free':
@@ -29,17 +22,11 @@ export class CreditTracker {
     }
   }
 
-  /**
-   * Get current month string (YYYY-MM-DD format, first day of month)
-   */
   private getCurrentMonth(): string {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
   }
 
-  /**
-   * Get Supabase client (expose a method in supabaseService or use directly)
-   */
   private getClient() {
     const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -56,11 +43,6 @@ export class CreditTracker {
     });
   }
 
-  /**
-   * Check if user has enough credits
-   * Returns credit info and whether user has enough credits
-   * Only reads credits - does not create records (let deductCredits handle creation)
-   */
   async checkCredits(userId: string, plan: 'free' | 'x402' | 'enterprise'): Promise<{
     hasCredits: boolean;
     creditInfo: CreditInfo;
@@ -125,10 +107,6 @@ export class CreditTracker {
     }
   }
 
-  /**
-   * Deduct credits and log usage
-   * Credits are deducted per API call (1 credit per call)
-   */
   async deductCredits(
     userId: string,
     apiKeyId: string,
@@ -168,23 +146,40 @@ export class CreditTracker {
 
       // Update monthly credits (only if request was successful)
       if (statusCode >= 200 && statusCode < 300 && creditsUsed > 0) {
-        // Get existing monthly credits record
+        // Get user plan to determine total credits
+        const { data: user } = await client
+          .from('users')
+          .select('plan')
+          .eq('id', userId)
+          .single();
+
+        if (!user) {
+          logger.error('User not found when updating credits', new Error('User not found'), {
+            userId,
+            monthStr,
+          });
+          return;
+        }
+
+        const totalCredits = this.getPlanCredits(user.plan as 'free' | 'x402' | 'enterprise');
+
+        // Check if record exists
         const { data: existingCredits } = await client
           .from('monthly_credits')
-          .select('*')
+          .select('used_credits')
           .eq('user_id', userId)
           .eq('month', monthStr)
           .single();
 
         if (existingCredits) {
           // Update existing record by incrementing used_credits
-          // This follows the dashboard pattern: update instead of read-then-update
           const { error: updateError } = await client
             .from('monthly_credits')
             .update({
               used_credits: (existingCredits.used_credits || 0) + creditsUsed,
             })
-            .eq('id', existingCredits.id);
+            .eq('user_id', userId)
+            .eq('month', monthStr);
 
           if (updateError) {
             logger.error('Error updating monthly credits', updateError as Error, {
@@ -193,28 +188,47 @@ export class CreditTracker {
             });
           }
         } else {
-          // Create new record only if it doesn't exist
-          // Get user plan to determine total credits
-          const { data: user } = await client
-            .from('users')
-            .select('plan')
-            .eq('id', userId)
-            .single();
+          // Record doesn't exist, create it
+          // Since duplicates are prevented at DB level, simple insert is safe
+          const { error: insertError } = await client
+            .from('monthly_credits')
+            .insert({
+              user_id: userId,
+              month: monthStr,
+              plan: user.plan,
+              total_credits: totalCredits,
+              used_credits: creditsUsed,
+            });
 
-          if (user) {
-            const totalCredits = this.getPlanCredits(user.plan as 'free' | 'x402' | 'enterprise');
-            const { error: createError } = await client
-              .from('monthly_credits')
-              .insert({
-                user_id: userId,
-                month: monthStr,
-                plan: user.plan,
-                total_credits: totalCredits,
-                used_credits: creditsUsed,
-              });
+          if (insertError) {
+            // If insert fails (e.g., race condition), try to update instead
+            if (insertError.code === '23505') {
+              // Duplicate key - record was created by another request, update it
+              const { data: raceConditionCredits } = await client
+                .from('monthly_credits')
+                .select('used_credits')
+                .eq('user_id', userId)
+                .eq('month', monthStr)
+                .single();
 
-            if (createError) {
-              logger.error('Error creating monthly credits', createError as Error, {
+              if (raceConditionCredits) {
+                const { error: updateError } = await client
+                  .from('monthly_credits')
+                  .update({
+                    used_credits: (raceConditionCredits.used_credits || 0) + creditsUsed,
+                  })
+                  .eq('user_id', userId)
+                  .eq('month', monthStr);
+
+                if (updateError) {
+                  logger.error('Error updating monthly credits after race condition', updateError as Error, {
+                    userId,
+                    monthStr,
+                  });
+                }
+              }
+            } else {
+              logger.error('Error inserting monthly credits', insertError as Error, {
                 userId,
                 monthStr,
               });
@@ -238,9 +252,6 @@ export class CreditTracker {
     }
   }
 
-  /**
-   * Get credit info for a user (without checking)
-   */
   async getCreditInfo(userId: string, plan: 'free' | 'x402' | 'enterprise'): Promise<CreditInfo> {
     try {
       const client = this.getClient();
@@ -271,6 +282,110 @@ export class CreditTracker {
         remainingCredits: totalCredits,
         plan,
       };
+    }
+  }
+
+  /**
+   * Reset credits for all users at the start of a new month
+   * Creates new monthly_credits records with used_credits = 0 for the current month
+   */
+  async resetMonthlyCredits(): Promise<void> {
+    try {
+      const client = this.getClient();
+      const monthStr = this.getCurrentMonth();
+      
+      logger.info('Starting monthly credit reset', { monthStr });
+
+      // Get all active users
+      const { data: users, error: usersError } = await client
+        .from('users')
+        .select('id, plan');
+
+      if (usersError) {
+        logger.error('Error fetching users for credit reset', usersError as Error);
+        throw usersError;
+      }
+
+      if (!users || users.length === 0) {
+        logger.info('No users found for credit reset');
+        return;
+      }
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Reset credits for each user
+      for (const user of users) {
+        try {
+          const totalCredits = this.getPlanCredits(user.plan as 'free' | 'x402' | 'enterprise');
+
+          // Check if record already exists for this month
+          const { data: existingCredits } = await client
+            .from('monthly_credits')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('month', monthStr)
+            .single();
+
+          if (existingCredits) {
+            // Update existing record to reset used_credits to 0
+            const { error: updateError } = await client
+              .from('monthly_credits')
+              .update({
+                used_credits: 0,
+                total_credits: totalCredits, // Update total in case plan changed
+                plan: user.plan,
+              })
+              .eq('id', existingCredits.id);
+
+            if (updateError) {
+              logger.error('Error updating credits for user', updateError as Error, {
+                userId: user.id,
+                monthStr,
+              });
+              errorCount++;
+            } else {
+              successCount++;
+            }
+          } else {
+            // Create new record for this month
+            const { error: insertError } = await client
+              .from('monthly_credits')
+              .insert({
+                user_id: user.id,
+                month: monthStr,
+                plan: user.plan,
+                total_credits: totalCredits,
+                used_credits: 0,
+              });
+
+            if (insertError) {
+              logger.error('Error creating credits for user', insertError as Error, {
+                userId: user.id,
+                monthStr,
+              });
+              errorCount++;
+            } else {
+              successCount++;
+            }
+          }
+        } catch (error) {
+          logger.error('Error processing user credit reset', error as Error, {
+            userId: user.id,
+          });
+          errorCount++;
+        }
+      }
+
+      logger.info('Monthly credit reset completed', {
+        monthStr,
+        totalUsers: users.length,
+        successCount,
+        errorCount,
+      });
+    } catch (error) {
+      logger.error('Error resetting monthly credits', error as Error);
+      throw error;
     }
   }
 }
