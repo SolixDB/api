@@ -1,4 +1,5 @@
 import { logger } from './logger';
+import { createClient } from '@supabase/supabase-js';
 
 export interface CreditInfo {
   totalCredits: number;
@@ -40,9 +41,6 @@ export class CreditTracker {
    * Get Supabase client (expose a method in supabaseService or use directly)
    */
   private getClient() {
-    // We need to access the Supabase client
-    // Since it's private, we'll create our own client instance
-    const { createClient } = require('@supabase/supabase-js');
     const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -61,6 +59,7 @@ export class CreditTracker {
   /**
    * Check if user has enough credits
    * Returns credit info and whether user has enough credits
+   * Only reads credits - does not create records (let deductCredits handle creation)
    */
   async checkCredits(userId: string, plan: 'free' | 'x402' | 'enterprise'): Promise<{
     hasCredits: boolean;
@@ -71,7 +70,7 @@ export class CreditTracker {
       const monthStr = this.getCurrentMonth();
       const totalCredits = this.getPlanCredits(plan);
 
-      // Get or create monthly credits record
+      // Only read existing monthly credits record (don't create)
       const { data: existingCredits, error: selectError } = await client
         .from('monthly_credits')
         .select('*')
@@ -80,32 +79,23 @@ export class CreditTracker {
         .single();
 
       if (selectError && selectError.code !== 'PGRST116') {
-        // PGRST116 is "not found" - expected for new month
+        // PGRST116 is "not found" - expected for new month, not an error
         logger.error('Error checking credits', selectError as Error, { userId, monthStr });
-        throw selectError;
-      }
-
-      let usedCredits = 0;
-      if (existingCredits) {
-        usedCredits = existingCredits.used_credits || 0;
-      } else {
-        // Create new monthly credits record for this month
-        const { error: insertError } = await client
-          .from('monthly_credits')
-          .insert({
-            user_id: userId,
-            month: monthStr,
+        // On error, allow the request but log it
+        // This prevents credit system from blocking legitimate requests
+        return {
+          hasCredits: true,
+          creditInfo: {
+            totalCredits,
+            usedCredits: 0,
+            remainingCredits: totalCredits,
             plan,
-            total_credits: totalCredits,
-            used_credits: 0,
-          });
-
-        if (insertError) {
-          logger.error('Error creating monthly credits record', insertError as Error, { userId, monthStr });
-          // Continue anyway - we'll try to create it later
-        }
+          },
+        };
       }
 
+      // If no record exists, assume 0 used credits (will be created on first deduction)
+      const usedCredits = existingCredits?.used_credits || 0;
       const remainingCredits = totalCredits - usedCredits;
       const hasCredits = remainingCredits > 0;
 
@@ -177,8 +167,8 @@ export class CreditTracker {
       }
 
       // Update monthly credits (only if request was successful)
-      if (statusCode >= 200 && statusCode < 300) {
-        // Get current monthly credits
+      if (statusCode >= 200 && statusCode < 300 && creditsUsed > 0) {
+        // Get existing monthly credits record
         const { data: existingCredits } = await client
           .from('monthly_credits')
           .select('*')
@@ -187,7 +177,8 @@ export class CreditTracker {
           .single();
 
         if (existingCredits) {
-          // Update existing record
+          // Update existing record by incrementing used_credits
+          // This follows the dashboard pattern: update instead of read-then-update
           const { error: updateError } = await client
             .from('monthly_credits')
             .update({
@@ -202,7 +193,8 @@ export class CreditTracker {
             });
           }
         } else {
-          // Get user plan to create new record
+          // Create new record only if it doesn't exist
+          // Get user plan to determine total credits
           const { data: user } = await client
             .from('users')
             .select('plan')
