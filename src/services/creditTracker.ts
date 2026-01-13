@@ -220,7 +220,10 @@ export class CreditTracker {
           .single();
 
         // PGRST116 is "not found" - expected when no record exists
-        const recordExists = existingCredits && (!selectError || selectError.code !== 'PGRST116');
+        // Record exists if we have data and either no error or error is not "not found"
+        const hasError = selectError !== null && selectError !== undefined;
+        const isNotFoundError = hasError && (selectError as { code?: string }).code === 'PGRST116';
+        const recordExists = existingCredits !== null && existingCredits !== undefined && !isNotFoundError;
 
         if (recordExists && existingCredits) {
           // Update existing record by incrementing used_credits
