@@ -136,6 +136,7 @@ export class CreditTracker {
 
   /**
    * Internal async method that actually performs the credit deduction
+   * Simplified: Get user, get monthly credits, increment used_credits by 1
    */
   private async deductCreditsAsync(
     userId: string,
@@ -151,50 +152,9 @@ export class CreditTracker {
       const client = this.getClient();
       const monthStr = this.getCurrentMonth();
 
-      // Insert usage log
-      const { error: logError } = await client
-        .from('usage_logs')
-        .insert({
-          user_id: userId,
-          api_key_id: apiKeyId,
-          endpoint,
-          method,
-          status_code: statusCode,
-          response_time_ms: responseTimeMs,
-          credits_used: creditsUsed,
-          error_message: errorMessage,
-        });
-
-      if (logError) {
-        logger.error('Error logging usage', logError as Error, {
-          userId,
-          apiKeyId,
-          endpoint,
-        });
-        // Don't throw - logging failure shouldn't break the API
-      }
-
-      // Update monthly credits (only if request was successful)
+      // Only increment credits for successful requests
       if (statusCode >= 200 && statusCode < 300 && creditsUsed > 0) {
-        logger.debug('Processing credit deduction', {
-          userId,
-          monthStr,
-          statusCode,
-          creditsUsed,
-        });
-      } else {
-        logger.debug('Skipping credit update', {
-          userId,
-          monthStr,
-          statusCode,
-          creditsUsed,
-          reason: statusCode < 200 || statusCode >= 300 ? 'unsuccessful_status' : 'no_credits_to_deduct',
-        });
-      }
-
-      if (statusCode >= 200 && statusCode < 300 && creditsUsed > 0) {
-
-        // Get user plan to determine total credits
+        // Get user to get their plan
         const { data: user } = await client
           .from('users')
           .select('plan')
@@ -209,129 +169,66 @@ export class CreditTracker {
           return;
         }
 
-        const totalCredits = this.getPlanCredits(user.plan as 'free' | 'x402' | 'enterprise');
-
-        // Check if record exists
-        const { data: existingCredits, error: selectError } = await client
+        // Get monthly credits record
+        const { data: monthlyCredits } = await client
           .from('monthly_credits')
-          .select('used_credits')
+          .select('used_credits, id')
           .eq('user_id', userId)
           .eq('month', monthStr)
           .single();
 
-        // PGRST116 is "not found" - expected when no record exists
-        // Record exists if we have data and either no error or error is not "not found"
-        const hasError = selectError !== null && selectError !== undefined;
-        const isNotFoundError = hasError && (selectError as { code?: string }).code === 'PGRST116';
-        const recordExists = existingCredits !== null && existingCredits !== undefined && !isNotFoundError;
-
-        if (recordExists && existingCredits) {
-          // Update existing record by incrementing used_credits
-          const newUsedCredits = (existingCredits.used_credits || 0) + creditsUsed;
-          
-          logger.debug('Updating monthly credits', {
-            userId,
-            monthStr,
-            oldUsedCredits: existingCredits.used_credits || 0,
-            creditsUsed,
-            newUsedCredits,
-          });
-
-          const { data: updatedData, error: updateError } = await client
+        if (monthlyCredits) {
+          // Record exists - increment used_credits by 1
+          await client
             .from('monthly_credits')
             .update({
-              used_credits: newUsedCredits,
+              used_credits: (monthlyCredits.used_credits || 0) + 1,
             })
-            .eq('user_id', userId)
-            .eq('month', monthStr)
-            .select('used_credits')
-            .single();
-
-          if (updateError) {
-            logger.error('Error updating monthly credits', updateError as Error, {
-              userId,
-              monthStr,
-              usedCredits: existingCredits.used_credits,
-              creditsUsed,
-            });
-          } else if (updatedData) {
-            logger.info('Successfully updated monthly credits', {
-              userId,
-              monthStr,
-              oldUsedCredits: existingCredits.used_credits || 0,
-              creditsUsed,
-              newUsedCredits: updatedData.used_credits,
-            });
-          } else {
-            logger.warn('Update completed but no data returned', {
-              userId,
-              monthStr,
-              newUsedCredits,
-            });
-          }
+            .eq('id', monthlyCredits.id);
         } else {
-          // Record doesn't exist, create it
-          // Since duplicates are prevented at DB level, simple insert is safe
-          logger.debug('Creating new monthly credits record', {
-            userId,
-            monthStr,
-            plan: user.plan,
-            totalCredits,
-            creditsUsed,
-          });
-
-          const { error: insertError } = await client
+          // Record doesn't exist - create it with used_credits = 1
+          const totalCredits = this.getPlanCredits(user.plan as 'free' | 'x402' | 'enterprise');
+          await client
             .from('monthly_credits')
             .insert({
               user_id: userId,
               month: monthStr,
               plan: user.plan,
               total_credits: totalCredits,
-              used_credits: creditsUsed,
+              used_credits: 1,
             });
-
-          if (insertError) {
-            // If insert fails (e.g., race condition), try to update instead
-            if (insertError.code === '23505') {
-              // Duplicate key - record was created by another request, update it
-              const { data: raceConditionCredits } = await client
-                .from('monthly_credits')
-                .select('used_credits')
-                .eq('user_id', userId)
-                .eq('month', monthStr)
-                .single();
-
-              if (raceConditionCredits) {
-                const { error: updateError } = await client
-                  .from('monthly_credits')
-                  .update({
-                    used_credits: (raceConditionCredits.used_credits || 0) + creditsUsed,
-                  })
-                  .eq('user_id', userId)
-                  .eq('month', monthStr);
-
-                if (updateError) {
-                  logger.error('Error updating monthly credits after race condition', updateError as Error, {
-                    userId,
-                    monthStr,
-                  });
-                }
-              }
-            } else {
-              logger.error('Error inserting monthly credits', insertError as Error, {
-                userId,
-                monthStr,
-              });
-            }
-          }
         }
       }
 
-      // Update API key last_used_at
-      await client
-        .from('api_keys')
-        .update({ last_used_at: new Date().toISOString() })
-        .eq('id', apiKeyId);
+      // Log usage (non-blocking, fire and forget)
+      Promise.resolve(
+        client
+          .from('usage_logs')
+          .insert({
+            user_id: userId,
+            api_key_id: apiKeyId,
+            endpoint,
+            method,
+            status_code: statusCode,
+            response_time_ms: responseTimeMs,
+            credits_used: creditsUsed,
+            error_message: errorMessage,
+          })
+      ).catch((logError: any) => {
+        logger.error('Error logging usage', logError as Error, {
+          userId,
+          apiKeyId,
+          endpoint,
+        });
+      });
+
+      // Update API key last_used_at (non-blocking)
+      Promise.resolve(
+        client
+          .from('api_keys')
+          .update({ last_used_at: new Date().toISOString() })
+          .eq('id', apiKeyId)
+      ).catch(() => {});
     } catch (error) {
       logger.error('Error deducting credits', error as Error, {
         userId,
