@@ -255,10 +255,10 @@ router.post('/', async (req: Request, res: Response) => {
               data: `Method '${method}' is not supported. Available methods: getTransaction, getTransactions, getProtocolStats, getProtocolComparison, getInstructionTypes, getProtocolActivity, getTopProtocols, getFailedTransactions, getProtocolPerformance, getProtocols`,
             },
           });
-          // Track failed request (no credits deducted)
+          // Track failed request (no credits deducted, non-blocking)
           if (apiKeyInfo) {
             const responseTime = Date.now() - startTime;
-            await creditTracker.deductCredits(
+            creditTracker.deductCredits(
               apiKeyInfo.user_id,
               apiKeyInfo.id,
               '/v1/rpc',
@@ -279,10 +279,10 @@ router.post('/', async (req: Request, res: Response) => {
         result,
       });
 
-      // Track usage for successful RPC call
+      // Track usage for successful RPC call (non-blocking)
       if (apiKeyInfo) {
         const responseTime = Date.now() - startTime;
-        await creditTracker.deductCredits(
+        creditTracker.deductCredits(
           apiKeyInfo.user_id,
           apiKeyInfo.id,
           '/v1/rpc',
@@ -310,10 +310,10 @@ router.post('/', async (req: Request, res: Response) => {
         },
       });
 
-      // Track failed request (no credits deducted)
+      // Track failed request (no credits deducted, non-blocking)
       if (apiKeyInfo) {
         const responseTime = Date.now() - startTime;
-        await creditTracker.deductCredits(
+        creditTracker.deductCredits(
           apiKeyInfo.user_id,
           apiKeyInfo.id,
           '/v1/rpc',
@@ -338,10 +338,10 @@ router.post('/', async (req: Request, res: Response) => {
       },
     });
 
-    // Track failed request
+    // Track failed request (non-blocking)
     if (apiKeyInfo) {
       const responseTime = Date.now() - startTime;
-      await creditTracker.deductCredits(
+      creditTracker.deductCredits(
         apiKeyInfo.user_id,
         apiKeyInfo.id,
         '/v1/rpc',

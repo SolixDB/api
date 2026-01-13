@@ -107,7 +107,37 @@ export class CreditTracker {
     }
   }
 
-  async deductCredits(
+  /**
+   * Deduct credits asynchronously (non-blocking)
+   * This method returns immediately and processes credits in the background
+   * to avoid delaying API responses
+   */
+  deductCredits(
+    userId: string,
+    apiKeyId: string,
+    endpoint: string,
+    method: string,
+    statusCode: number,
+    responseTimeMs: number,
+    creditsUsed: number = 1,
+    errorMessage?: string
+  ): void {
+    // Fire and forget - don't await, process in background
+    this.deductCreditsAsync(userId, apiKeyId, endpoint, method, statusCode, responseTimeMs, creditsUsed, errorMessage)
+      .catch((error) => {
+        // Log errors but don't throw - credit tracking shouldn't break the API
+        logger.error('Error in background credit deduction', error as Error, {
+          userId,
+          apiKeyId,
+          endpoint,
+        });
+      });
+  }
+
+  /**
+   * Internal async method that actually performs the credit deduction
+   */
+  private async deductCreditsAsync(
     userId: string,
     apiKeyId: string,
     endpoint: string,
@@ -146,6 +176,24 @@ export class CreditTracker {
 
       // Update monthly credits (only if request was successful)
       if (statusCode >= 200 && statusCode < 300 && creditsUsed > 0) {
+        logger.debug('Processing credit deduction', {
+          userId,
+          monthStr,
+          statusCode,
+          creditsUsed,
+        });
+      } else {
+        logger.debug('Skipping credit update', {
+          userId,
+          monthStr,
+          statusCode,
+          creditsUsed,
+          reason: statusCode < 200 || statusCode >= 300 ? 'unsuccessful_status' : 'no_credits_to_deduct',
+        });
+      }
+
+      if (statusCode >= 200 && statusCode < 300 && creditsUsed > 0) {
+
         // Get user plan to determine total credits
         const { data: user } = await client
           .from('users')
@@ -164,32 +212,71 @@ export class CreditTracker {
         const totalCredits = this.getPlanCredits(user.plan as 'free' | 'x402' | 'enterprise');
 
         // Check if record exists
-        const { data: existingCredits } = await client
+        const { data: existingCredits, error: selectError } = await client
           .from('monthly_credits')
           .select('used_credits')
           .eq('user_id', userId)
           .eq('month', monthStr)
           .single();
 
-        if (existingCredits) {
+        // PGRST116 is "not found" - expected when no record exists
+        const recordExists = existingCredits && (!selectError || selectError.code !== 'PGRST116');
+
+        if (recordExists && existingCredits) {
           // Update existing record by incrementing used_credits
-          const { error: updateError } = await client
+          const newUsedCredits = (existingCredits.used_credits || 0) + creditsUsed;
+          
+          logger.debug('Updating monthly credits', {
+            userId,
+            monthStr,
+            oldUsedCredits: existingCredits.used_credits || 0,
+            creditsUsed,
+            newUsedCredits,
+          });
+
+          const { data: updatedData, error: updateError } = await client
             .from('monthly_credits')
             .update({
-              used_credits: (existingCredits.used_credits || 0) + creditsUsed,
+              used_credits: newUsedCredits,
             })
             .eq('user_id', userId)
-            .eq('month', monthStr);
+            .eq('month', monthStr)
+            .select('used_credits')
+            .single();
 
           if (updateError) {
             logger.error('Error updating monthly credits', updateError as Error, {
               userId,
               monthStr,
+              usedCredits: existingCredits.used_credits,
+              creditsUsed,
+            });
+          } else if (updatedData) {
+            logger.info('Successfully updated monthly credits', {
+              userId,
+              monthStr,
+              oldUsedCredits: existingCredits.used_credits || 0,
+              creditsUsed,
+              newUsedCredits: updatedData.used_credits,
+            });
+          } else {
+            logger.warn('Update completed but no data returned', {
+              userId,
+              monthStr,
+              newUsedCredits,
             });
           }
         } else {
           // Record doesn't exist, create it
           // Since duplicates are prevented at DB level, simple insert is safe
+          logger.debug('Creating new monthly credits record', {
+            userId,
+            monthStr,
+            plan: user.plan,
+            totalCredits,
+            creditsUsed,
+          });
+
           const { error: insertError } = await client
             .from('monthly_credits')
             .insert({

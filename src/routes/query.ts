@@ -112,10 +112,10 @@ router.post('/', async (req: Request, res: Response) => {
       if (results.length === 0) {
         res.setHeader('Content-Type', 'text/csv');
         res.send('');
-        // Track usage for successful CSV response
+        // Track usage for successful CSV response (non-blocking)
         if (apiKeyInfo) {
           const responseTime = Date.now() - startTime;
-          await creditTracker.deductCredits(
+          creditTracker.deductCredits(
             apiKeyInfo.user_id,
             apiKeyInfo.id,
             '/v1/query',
@@ -147,10 +147,10 @@ router.post('/', async (req: Request, res: Response) => {
       res.setHeader('Content-Disposition', 'attachment; filename="query-results.csv"');
       res.send(csvRows.join('\n'));
       
-      // Track usage for successful CSV response
+      // Track usage for successful CSV response (non-blocking)
       if (apiKeyInfo) {
         const responseTime = Date.now() - startTime;
-        await creditTracker.deductCredits(
+        creditTracker.deductCredits(
           apiKeyInfo.user_id,
           apiKeyInfo.id,
           '/v1/query',
@@ -170,10 +170,10 @@ router.post('/', async (req: Request, res: Response) => {
       query: sanitizedQuery,
     });
 
-    // Track usage for successful JSON response
+    // Track usage for successful JSON response (non-blocking)
     if (apiKeyInfo) {
       const responseTime = Date.now() - startTime;
-      await creditTracker.deductCredits(
+      creditTracker.deductCredits(
         apiKeyInfo.user_id,
         apiKeyInfo.id,
         '/v1/query',
@@ -200,10 +200,10 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Track usage for failed requests (log but don't deduct credits)
+    // Track usage for failed requests (log but don't deduct credits, non-blocking)
     if (apiKeyInfo) {
       const responseTime = Date.now() - startTime;
-      await creditTracker.deductCredits(
+      creditTracker.deductCredits(
         apiKeyInfo.user_id,
         apiKeyInfo.id,
         '/v1/query',
